@@ -28,7 +28,7 @@ Mandatory for rigor full. For lite, run it when a scenario involves more than on
 
 5. **Risks.** `[risk] → mitigation` pairs. Include at least: what happens on partial failure mid-flow, and what's the rollback story. For full rigor, also data migration risk and backward compatibility.
 
-6. **UI notes** (if the feature has UI): the screens/states involved, referencing scenarios. A rough ASCII wireframe or a list of states is enough; don't design visuals here.
+6. **UI notes** (if the feature has UI): the screens/states involved, referencing scenarios. If `wireframes/` exists, link the screen files and note only what the drawing can't say (data source per field, async states); otherwise a list of states is enough. Don't design visuals here.
 
 7. **Test hooks.** Anything design must provide so tests.md can be written without hand-waving: how to fake an external dependency, how to force an exception flow, how to observe an async outcome. Test-spec reads this section first.
 

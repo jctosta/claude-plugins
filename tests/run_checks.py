@@ -4,12 +4,14 @@
 Run from the repository root:  python tests/run_checks.py
 
 Checks:
-1. The worked example passes spec_lint with 0 errors and 0 warnings.
+1. The worked example passes spec_lint with 0 errors and 0 warnings, and its
+   wireframes stay self-contained.
 2. Deliberately broken copies of the example are caught (each injected break
    produces at least one error, and the run exits non-zero).
 3. spec_status runs on the example and reports the expected phase.
-4. The review site's embedded JavaScript parses (node --check), and its
-   backend round-trips a comment through feedback.md.
+4. The review site's embedded JavaScript parses (node --check), it lists a
+   feature's wireframes, and its backend round-trips a comment (including one
+   on a wireframe screen) through feedback.md.
 Exits non-zero on the first failure.
 """
 from __future__ import annotations
@@ -31,7 +33,14 @@ FEATURE = EXAMPLE / "features/erasure-request"
 sys.path.insert(0, str(SCRIPTS))
 import spec_lint  # noqa: E402
 import spec_status  # noqa: E402
-from spec_site import append_feedback, parse_feedback, set_status  # noqa: E402
+from spec_site import (  # noqa: E402
+    append_feedback,
+    build_tree,
+    feedback_label,
+    feedback_path,
+    parse_feedback,
+    set_status,
+)
 
 failures: list[str] = []
 
@@ -52,6 +61,16 @@ rep = run_lint(FEATURE)
 check("example: 0 errors", len(rep.errors) == 0, "; ".join(rep.errors))
 check("example: 0 warnings", len(rep.warnings) == 0, "; ".join(rep.warnings))
 
+WIREFRAMES = sorted((FEATURE / "wireframes").glob("*.html"))
+wf_text = {w.name: w.read_text(encoding="utf-8") for w in WIREFRAMES}
+check("example: wireframes present", len(WIREFRAMES) == 3, f"{len(WIREFRAMES)} screen(s)")
+check("example: shared stylesheet exists", (EXAMPLE / "features/.wireframe.css").exists())
+check("example: every screen declares coverage on line 1",
+      all(t.splitlines()[0].startswith("<!-- covers ") for t in wf_text.values()))
+check("example: every screen is self-contained (X-01)",
+      all('href="../../.wireframe.css"' in t and "cdn.jsdelivr.net/npm/wired-elements" in t
+          for t in wf_text.values()))
+
 print("2. broken fixtures are caught")
 BREAKS = [
     # (name, file, old, new, severity: "error" | "warning")
@@ -64,6 +83,13 @@ BREAKS = [
     ("uncovered scenario", "tests.md",
      "| S-02.2 | T-02.2a | integration | subject with no retained categories; request IN_PROGRESS | all categories erased; completion notice retained == [] with \"nothing retained\" text |\n", "", "error"),
     ("blocking question on approved brief", "brief.md", "| user | no |", "| user | yes |", "error"),
+    ("wireframe covers unknown scenario", "wireframes/request-form.html",
+     "<!-- covers S-01.1, S-01.2 -->", "<!-- covers S-05.1, S-01.2 -->", "error"),
+    ("wireframe dead link", "wireframes/dpo-execution.html",
+     '<a href="request-confirmation.html">Confirmation</a>',
+     '<a href="request-receipt.html">Confirmation</a>', "error"),
+    ("main flow with no wireframe", "wireframes/dpo-execution.html",
+     "<!-- covers S-02.1, S-02.2, S-02.3, S-01.3 -->", "<!-- covers S-02.2, S-02.3, S-01.3 -->", "warning"),
 ]
 with tempfile.TemporaryDirectory() as td:
     for name, fname, old, new, severity in BREAKS:
@@ -114,6 +140,20 @@ with tempfile.TemporaryDirectory() as td:
           any(i["id"] == item["id"] and i["text"] == "ci round-trip" and i["anchor"] == "S-01.1" for i in items))
     check("feedback: resolve works", set_status(fb, item["id"], "resolved", "done in ci")
           and any(i["id"] == item["id"] and i["status"] == "resolved" for i in parse_feedback(fb)))
+
+    wf_rel = "features/erasure-request/wireframes/request-form.html"
+    check("wireframes: listed after tests.md",
+          [f["name"] for f in build_tree(docs)["features"][0]["files"]]
+          == ["brief.md", "spec.md", "design.md", "tests.md",
+              "dpo-execution.html", "request-confirmation.html", "request-form.html", "feedback.md"])
+    check("wireframes: comments land in the feature's feedback.md", feedback_path(docs, wf_rel) == fb)
+    check("wireframes: file label keeps the folder", feedback_label(wf_rel) == "wireframes/request-form.html")
+    wf_item = append_feedback(fb, feedback_label(wf_rel), "", "", "screen round-trip", "ci")
+    check("wireframes: comment round-trips",
+          any(i["id"] == wf_item["id"] and i["file"] == "wireframes/request-form.html" and i["anchor"] == ""
+              for i in parse_feedback(fb)))
+    check("wireframes: comment resolves", set_status(fb, wf_item["id"], "resolved", "edited the screen")
+          and any(i["id"] == wf_item["id"] and i["status"] == "resolved" for i in parse_feedback(fb)))
 
 print()
 if failures:

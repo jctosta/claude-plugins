@@ -1,0 +1,56 @@
+<!-- covers S-01.1, S-01.2 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Submit erasure request — wireframe</title>
+<link rel="stylesheet" href="../../.wireframe.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/wired-elements@3.0.0-rc.6/+esm"></script>
+</head>
+<body>
+
+<h1>Submit erasure request</h1>
+<p class="who">Subject — asks for every personal data category held under their identifier to be erased.</p>
+
+<wired-card>
+  <p>We will erase every personal data category we hold about you, except categories
+     under a retention obligation. You will get a completion notice listing anything kept
+     and why, within 15 calendar days of submitting.</p>
+
+  <label class="field">
+    <span class="label">Identifier on file</span>
+    <wired-input placeholder="carla.mendes@example.org"></wired-input>
+    <span class="hint">Read-only — taken from the signed-in Subject.</span>
+  </label>
+
+  <label class="field">
+    <span class="label">Reason (optional)</span>
+    <wired-textarea placeholder="Not required. Kept with the Request for the audit trail."></wired-textarea>
+  </label>
+
+  <div class="field">
+    <wired-checkbox>I understand erasure cannot be undone.</wired-checkbox>
+  </div>
+
+  <div class="row">
+    <wired-button>Submit erasure request</wired-button>
+    <a href="request-confirmation.html">(submits → confirmation)</a>
+  </div>
+</wired-card>
+
+<div class="state">
+  <span class="label">S-01.2 Alternative — duplicate request</span>
+  <p><strong>You already have an erasure request in progress.</strong>
+     Request <code>REQ-2026-0413</code>, submitted 12 Aug 2026, deadline 27 Aug 2026.
+     No new Request was created.</p>
+  <p class="note">Submit stays disabled while a Request of this type is PENDING or IN_PROGRESS (INV-01).</p>
+</div>
+
+<nav class="nav">
+  <a href="request-confirmation.html">Confirmation</a>
+  <a href="dpo-execution.html">DPO execution</a>
+</nav>
+
+</body>
+</html>

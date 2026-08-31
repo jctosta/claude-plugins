@@ -1,0 +1,73 @@
+<!-- covers S-02.1, S-02.2, S-02.3, S-01.3 -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Execute erasure request — wireframe</title>
+<link rel="stylesheet" href="../../.wireframe.css">
+<script type="module" src="https://cdn.jsdelivr.net/npm/wired-elements@3.0.0-rc.6/+esm"></script>
+</head>
+<body>
+
+<h1>Execute erasure request</h1>
+<p class="who">DPO — runs the erasure and sees exactly what was kept and why.</p>
+
+<wired-card>
+  <table>
+    <tr><th>Request</th><td>REQ-2026-0517 · Subject carla.mendes@example.org</td></tr>
+    <tr><th>Status</th><td>IN_PROGRESS</td></tr>
+    <tr><th>Deadline</th><td>15 Sep 2026</td></tr>
+  </table>
+</wired-card>
+
+<h2>Categories</h2>
+<wired-card>
+  <table>
+    <tr><th>Category</th><th>Outcome</th><th>Legal basis</th></tr>
+    <tr><td>Account profile</td><td>Erased</td><td>—</td></tr>
+    <tr><td>Support messages</td><td>Erased</td><td>—</td></tr>
+    <tr><td>Fiscal records</td><td>Kept — retention obligation</td><td>Tax code, 5 years</td></tr>
+  </table>
+  <p class="note">Categories under a retention obligation are never erased by a Request (INV-02).</p>
+
+  <div class="row">
+    <wired-button>Complete and send notice</wired-button>
+    <a href="request-confirmation.html">What the Subject sees</a>
+  </div>
+</wired-card>
+
+<h2>Completion notice preview</h2>
+<wired-card>
+  <div class="placeholder"></div>
+  <p class="note">Notice lists erased categories, kept categories and each legal basis;
+     sending it moves the Request to COMPLETED.</p>
+</wired-card>
+
+<div class="state">
+  <span class="label">S-02.2 Alternative — nothing to retain</span>
+  <p>Every category shows <em>Erased</em>, the legal basis column is gone, and the notice
+     preview reads "nothing was retained".</p>
+</div>
+
+<div class="state">
+  <span class="label">S-02.3 Exception — erasure fails midway</span>
+  <p><strong>Support messages could not be erased.</strong> The Request stays IN_PROGRESS,
+     Account profile stays erased, and no completion notice is sent. Remaining: Support
+     messages, Fiscal records (kept).</p>
+</div>
+
+<div class="state">
+  <span class="label">S-01.3 Exception — confirmation delivery fails</span>
+  <p><strong>Confirmation for REQ-2026-0517 has not been delivered.</strong> Re-attempting
+     until 13 Sep 2026 14:20; the Request stays PENDING. After 24 hours this becomes an alert
+     on this queue.</p>
+</div>
+
+<nav class="nav">
+  <a href="request-form.html">Submit erasure request</a>
+  <a href="request-confirmation.html">Confirmation</a>
+</nav>
+
+</body>
+</html>
