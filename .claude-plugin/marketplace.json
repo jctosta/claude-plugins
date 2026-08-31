@@ -1,0 +1,17 @@
+{
+  "name": "jctosta-plugins",
+  "owner": {
+    "name": "Carlos",
+    "url": "https://github.com/jctosta"
+  },
+  "description": "Personal Claude Code plugins: spec-first workflow and friends",
+  "plugins": [
+    {
+      "name": "spec-workflow",
+      "source": "./plugins/spec-workflow",
+      "description": "Spec-first development workflow: define-app, explore, refine, design, test-spec, feedback, status — artifacts validated before code, with traceability lint and a local review site",
+      "category": "workflow",
+      "tags": ["spec", "requirements", "testing", "workflow"]
+    }
+  ]
+}

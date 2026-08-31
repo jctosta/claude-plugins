@@ -1,0 +1,38 @@
+name: release
+
+# Tag a release (git tag v2026.08.31 && git push --tags) to get .skill
+# artifacts for claude.ai / mobile attached to a GitHub Release.
+# Claude Code users don't need releases: installs track the repo directly.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-skill:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Run checks before releasing
+        run: python tests/run_checks.py
+      - name: Package .skill bundles (zip of the skill folder)
+        run: |
+          mkdir -p dist
+          for d in plugins/*/skills/*/; do
+            name=$(basename "$d")
+            (cd "$(dirname "$d")" && zip -qr "$GITHUB_WORKSPACE/dist/$name.skill" "$name")
+          done
+          ls -la dist
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.skill
+          generate_release_notes: true
