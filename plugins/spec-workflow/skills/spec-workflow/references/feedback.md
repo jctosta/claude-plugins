@@ -14,7 +14,7 @@ Consumes open `F-NN` items in `docs/features/<slug>/feedback.md` (or `docs/produ
   How many times? The subject should know when to escalate.
   ```
 
-  Header fields: id, file, anchor (an ID like `REQ-01`/`S-01.3`/`D-02`/`X-01`, or a heading slug, or empty), status. Then a date/author line, an optional quoted selection (`> ` lines), then the comment.
+  Header fields: id, file, anchor (an ID like `REQ-01`/`S-01.3`/`D-02`/`X-01`, or a heading slug, or empty — comments on a screen are file-level, so `[wireframes/<file>.html] []`), status. Then a date/author line, an optional quoted selection (`> ` lines), then the comment.
 - The artifact each item points at, plus whatever depends on it (a spec change usually touches tests.md; a brief change may invalidate a spec).
 
 ## Method
@@ -30,6 +30,8 @@ Work item by item, oldest first. For each open item:
    - *Can't do without a decision* — the comment implies a product choice the agent shouldn't make alone (which deadline rule, which option). Leave open, add a `Q-NN` to brief.md's open questions, and list it in the review message.
 
 2. **Edit the anchored artifact** at the anchor. If the anchor is a scenario, changes stay inside that scenario unless the comment is clearly broader. Keep IDs stable.
+
+   For a comment on `wireframes/<file>.html`: edit the screen, re-check its `covers` comment and internal links, and resolve with a note. If the change implies behavior the spec doesn't state, it's a spec change first — say so instead of drawing it.
 
 3. **Propagate.** A changed `THEN` line means a changed assert in tests.md; a new scenario means a new row and, if skeletons exist, a new red test; a removed requirement means its tests are removed and a `Removed` note is left. A new decision goes to design.md as `D-NN`. Do the propagation in the same turn — a spec that moved without its tests is worse than no change.
 

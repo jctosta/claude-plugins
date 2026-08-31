@@ -1,6 +1,6 @@
 ---
 name: spec-workflow
-description: Spec-first development workflow that produces validated artifacts (product definition, feature brief, behavioral spec with use-case flows, sequence-diagram design, test specification) BEFORE code, then hands off to Backlog.md tasks. Use whenever the user wants to define a new application or product, list or prioritize features, explore or refine a feature idea, write requirements, use cases, scenarios or acceptance criteria, draw sequence diagrams, derive a test plan from a spec, check spec quality or traceability, apply review comments, or says "define the app", "explore this", "refine", "spec this out", "test spec", "apply feedback", "run spec lint". Also trigger when a repo has docs/product/ or docs/features/, and before implementing any non-trivial feature even if "spec" is never said. Sub-commands dispatch directly — status, define-app, explore, refine, design, test-spec, feedback, handoff, lint, site.
+description: Spec-first development workflow that produces validated artifacts (product definition, feature brief, behavioral spec with use-case flows, sequence-diagram design, test specification) BEFORE code, then hands off to Backlog.md tasks. Use whenever the user wants to define a new application or product, list or prioritize features, explore or refine a feature idea, write requirements, use cases, scenarios or acceptance criteria, sketch wireframes or screens for a feature, draw sequence diagrams, derive a test plan from a spec, check spec quality or traceability, apply review comments, or says "define the app", "explore this", "refine", "spec this out", "test spec", "apply feedback", "run spec lint". Also trigger when a repo has docs/product/ or docs/features/, and before implementing any non-trivial feature even if "spec" is never said. Sub-commands dispatch directly — status, define-app, explore, refine, wireframe, design, test-spec, feedback, handoff, lint, site.
 metadata:
   argument-hint: "<phase> [feature-slug]"
 ---
@@ -19,6 +19,7 @@ Code is cheap now; intent is not. Every artifact exists so that a specific quest
 | What are the things in this domain and how do they relate? | `docs/product/domain.md` |
 | Why this feature, which options, what's out? | `docs/features/<slug>/brief.md` |
 | What must the system observably do, in every flow? | `docs/features/<slug>/spec.md` |
+| What do the screens look like? (optional) | `docs/features/<slug>/wireframes/*.html` |
 | How do the parts interact and what contracts change? | `docs/features/<slug>/design.md` |
 | How will we know each scenario holds? | `docs/features/<slug>/tests.md` |
 
@@ -33,7 +34,7 @@ Two ways to reach a phase:
    - `spec-workflow:explore erasure-request` or `spec-workflow explore` written in the message
    - `explore erasure-request` alone when this skill is already loaded and the word is a phase name
 
-   Grammar: `<phase> [slug] [free text]`. Phases: `status`, `define-app`, `explore`, `refine`, `design`, `test-spec`, `feedback`, `handoff`, `lint`, `site`. The slug is optional for `status`, `define-app`, `lint` and `site`; for the others, if it's missing and only one feature folder exists, use it; if several exist, list them and ask. Free text after the slug is the phase's input (the idea, the ticket reference, a specific instruction).
+   Grammar: `<phase> [slug] [free text]`. Phases: `status`, `define-app`, `explore`, `refine`, `wireframe`, `design`, `test-spec`, `feedback`, `handoff`, `lint`, `site`. The slug is optional for `status`, `define-app`, `lint` and `site`; for the others, if it's missing and only one feature folder exists, use it; if several exist, list them and ask. Free text after the slug is the phase's input (the idea, the ticket reference, a specific instruction).
 
    `status [slug]` runs `scripts/spec_status.py` and reports where things stand and what comes next (see `references/status.md`). `lint [slug]` runs `scripts/spec_lint.py` and reports. `site` starts `scripts/spec_site.py docs` and prints the URL (run it in the background so the session continues).
 
@@ -51,6 +52,7 @@ Each phase is one invocation: read its inputs, produce exactly one artifact, run
 | define-app | "define the app", "new project", "what features" | conversation, README if any | `product.md`, `domain.md` | `references/define-app.md` |
 | explore | "explore", "think through", "options for" | ticket/idea, product.md | `brief.md` | `references/explore.md` |
 | refine | "refine", "spec this", "use cases", "scenarios" | brief.md (approved) | `spec.md` | `references/refine.md` |
+| wireframe *(optional)* | "wireframe", "sketch the screens", "what does it look like" | spec.md (approved) | `wireframes/*.html` | `references/wireframe.md` |
 | design | "design", "sequence diagram", "how does it flow" | spec.md (approved) | `design.md` | `references/design.md` |
 | test-spec | "test spec", "test plan", "test cases" | spec.md, design.md | `tests.md` + failing test skeletons | `references/test-spec.md` |
 | feedback | "address the comments", "apply feedback", "process review" | `feedback.md` open items | updated artifacts, items resolved | `references/feedback.md` |
@@ -99,7 +101,7 @@ Never renumber. If a requirement is dropped, keep the number out of use and note
 
 ## Templates
 
-`assets/templates/` holds one template per artifact. Copy the template, fill every section, delete none. A section that genuinely doesn't apply gets `None — <one line why>` rather than removal, so a reviewer can tell "considered and empty" from "forgotten". `examples/` contains a complete lite→full feature (`erasure-request`) that passes lint — read it when unsure what "done" looks like.
+`assets/templates/` holds one template per artifact (`wireframe.html` is the screen skeleton; `wireframe.css` is copied once to `docs/features/.wireframe.css`). Copy the template, fill every section, delete none. A section that genuinely doesn't apply gets `None — <one line why>` rather than removal, so a reviewer can tell "considered and empty" from "forgotten". `examples/` contains a complete lite→full feature (`erasure-request`) that passes lint — read it when unsure what "done" looks like.
 
 ## Bootstrapping a project
 
@@ -124,7 +126,7 @@ One line per feature: which artifacts exist and are approved, rigor, lint counts
 python scripts/spec_site.py docs [--port 8765] [--author name]
 ```
 
-Serves `docs/` at a local URL: rendered Markdown with Mermaid, lint results per feature in the sidebar, and comment-by-selection. Selecting text and saving a comment appends an `F-NN` entry to the folder's `feedback.md` with the nearest ID as anchor and the selection as quote. Comments can be marked resolved from the site too, but the intended loop is: human comments on the site → `spec-workflow:feedback <slug>` → agent edits artifacts and resolves with a note → human re-reads. Needs internet once for the marked/mermaid scripts; no other dependencies.
+Serves `docs/` at a local URL: rendered Markdown with Mermaid, lint results per feature in the sidebar, comment-by-selection, and wireframe screens in a sandboxed frame with a per-screen comment button. Selecting text and saving a comment appends an `F-NN` entry to the folder's `feedback.md` with the nearest ID as anchor and the selection as quote. Comments can be marked resolved from the site too, but the intended loop is: human comments on the site → `spec-workflow:feedback <slug>` → agent edits artifacts and resolves with a note → human re-reads. Needs internet once for the marked/mermaid scripts; no other dependencies.
 
 ## Lint
 

@@ -6,7 +6,7 @@ Currently shipping:
 
 | Plugin | What it does |
 |---|---|
-| `spec-workflow` | Spec-first development workflow: define the product, explore → refine → design → test-spec each feature, validate spec and tests *before* code, with a traceability lint, a local review site with comment-driven feedback, and handoff to Backlog.md tasks. |
+| `spec-workflow` | Spec-first development workflow: define the product, explore → refine → (wireframe) → design → test-spec each feature, validate spec and tests *before* code, with a traceability lint, a local review site with comment-driven feedback, and handoff to Backlog.md tasks. |
 
 ## Install (Claude Code)
 
@@ -22,6 +22,7 @@ Then either invoke the phase commands directly:
 /spec-workflow:define-app
 /spec-workflow:explore checkout-flow "users abandon at the payment step"
 /spec-workflow:refine checkout-flow
+/spec-workflow:wireframe checkout-flow
 /spec-workflow:design checkout-flow
 /spec-workflow:test-spec checkout-flow
 /spec-workflow:feedback checkout-flow
@@ -77,10 +78,10 @@ tests/run_checks.py                  # CI entry point
 
 `tests/run_checks.py` (runs on every push and PR):
 
-1. The worked example passes `spec_lint` with **0 errors, 0 warnings** — it's the calibration target the skill points agents at, so it must stay clean.
-2. Six deliberately broken copies of the example each trigger the lint (wrong scenario heading, missing WHEN, implementation word in the spec, test-ID mismatch, uncovered scenario, blocking question on an approved brief).
+1. The worked example passes `spec_lint` with **0 errors, 0 warnings** — it's the calibration target the skill points agents at, so it must stay clean — and its wireframes stay self-contained (coverage comment on line 1, shared stylesheet, CDN import).
+2. Nine deliberately broken copies of the example each trigger the lint (wrong scenario heading, missing WHEN, implementation word in the spec, test-ID mismatch, uncovered scenario, blocking question on an approved brief, wireframe covering an unknown scenario, dead wireframe link, main flow with no screen).
 3. `spec_status` parses the example and derives the expected phase.
-4. The review site's embedded JS parses (`node --check`) and a comment round-trips through `feedback.md` (append → parse → resolve).
+4. The review site's embedded JS parses (`node --check`), the sidebar lists a feature's wireframes, and a comment round-trips through `feedback.md` (append → parse → resolve) — for a Markdown artifact and for a wireframe screen.
 
 A second job runs `claude plugin validate .` for manifest/frontmatter schema errors.
 

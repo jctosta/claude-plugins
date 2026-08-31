@@ -148,6 +148,12 @@ def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None)
     else:
         decide("unknown", f"tests.md status '{tests.status}' not recognised", "human")
 
+    screens = sorted((folder / "wireframes").glob("*.html")) if (folder / "wireframes").is_dir() else []
+    if screens:
+        st.notes.append(f"wireframes: {len(screens)} screen(s)")
+    elif spec.status == "approved" and not design.exists and st.phase != "shipped":
+        st.next += f" (optional: `spec-workflow:wireframe {st.slug}`)"
+
     if st.lint_warnings and st.lint_errors == 0:
         st.notes.append(f"{st.lint_warnings} lint warning(s) to acknowledge")
     if not needs_design and not design.exists and spec.status == "approved":

@@ -31,6 +31,9 @@ STEP_RE = re.compile(r"^\s*-\s*(GIVEN|WHEN|THEN|AND)\b")
 XCUT_RE = re.compile(r"^\s*-\s*(X-\d{2}):")
 KEYWORD_RE = re.compile(r"\b(SHALL|MUST|SHOULD|MAY)\b")
 COVERS_RE = re.compile(r"%%\s*covers\s*:?\s*(.+)")
+WF_COVERS_RE = re.compile(r"<!--\s*covers\s*:?\s*([^>]*?)-->")
+WF_NOUI_RE = re.compile(r"<!--\s*no-ui\s*:?\s*([^>]*?)-->")
+HREF_RE = re.compile(r"""\bhref\s*=\s*["']([^"']+)["']""")
 SID_RE = re.compile(r"\bS-\d{2}\.\d+\b")
 TID_RE = re.compile(r"\bT-\d{2}\.\d+[a-z]\b|\bT-X\d{2}[a-z]\b")
 TEST_ID_RE = re.compile(r"^T-(\d{2})\.(\d+)([a-z])$|^T-(X\d{2})([a-z])$")
@@ -379,6 +382,60 @@ def lint_tests(path: Path, rep: Report, reqs: list[Requirement], xcuts: list[str
     return rows
 
 
+# --- wireframes ------------------------------------------------------------
+
+
+def lint_wireframes(folder: Path, rep: Report, reqs: list[Requirement]) -> None:
+    """Screens under wireframes/ — coverage comments and internal links.
+
+    The folder is optional: its absence means the phase wasn't run, never an error.
+    """
+    wf_dir = folder / "wireframes"
+    if not wf_dir.is_dir():
+        rep.info.append("wireframes/: not written (optional phase)")
+        return
+    files = sorted(p for p in wf_dir.glob("*.html") if p.is_file())
+    if not files:
+        rep.warn("wireframes/", None, "folder exists but holds no .html screen")
+        return
+
+    all_sids = {s.sid: s for r in reqs for s in r.scenarios}
+    covered: set[str] = set()
+    no_ui: set[str] = set()
+
+    for path in files:
+        f = f"wireframes/{path.name}"
+        text = path.read_text(encoding="utf-8")
+        m = WF_COVERS_RE.search(text)
+        if not m:
+            rep.err(f, None, "no '<!-- covers S-NN.M -->' comment")
+        else:
+            sids = SID_RE.findall(m.group(1))
+            if not sids:
+                rep.err(f, None, "covers comment names no scenario")
+            for sid in sids:
+                if reqs and sid not in all_sids:
+                    rep.err(f, None, f"covers unknown scenario {sid}")
+                covered.add(sid)
+        for m in WF_NOUI_RE.finditer(text):
+            no_ui |= set(SID_RE.findall(m.group(1)))
+        for i, ln in enumerate(text.splitlines(), 1):
+            for href in HREF_RE.findall(ln):
+                target = href.split("#")[0].split("?")[0]
+                if not target or "://" in target or target.startswith(("#", "//", "mailto:")):
+                    continue
+                if not target.lower().endswith(".html"):
+                    continue
+                if not (path.parent / target).exists():
+                    rep.err(f, i, f"link to '{target}' — no such file in the folder")
+
+    for sid, s in all_sids.items():
+        if s.kind == "Main flow" and sid not in covered and sid not in no_ui:
+            rep.warn("wireframes/", None,
+                     f"{sid} (Main flow) has no screen — draw one or add "
+                     f"'<!-- no-ui: {sid} reason -->'")
+
+
 # --- code markers -----------------------------------------------------------
 
 
@@ -461,6 +518,7 @@ def lint_feature(folder: Path, tests_dir: Path | None, forbidden: list[re.Patter
             rows = lint_tests(tests, rep, reqs, xcuts)
     else:
         rep.info.append("tests.md: not written yet")
+    lint_wireframes(folder, rep, reqs)
     fb = folder / "feedback.md"
     if fb.exists():
         known_ids = {r.rid for r in reqs} | {s.sid for r in reqs for s in r.scenarios} | set(xcuts)

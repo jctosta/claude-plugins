@@ -6,6 +6,8 @@
 
 Renders docs/product/*.md and docs/features/<slug>/*.md with Mermaid diagrams,
 shows lint results per feature, and lets you leave comments by selecting text.
+Wireframes (docs/features/<slug>/wireframes/*.html) render in a sandboxed iframe
+and take file-level comments.
 Comments are saved to docs/features/<slug>/feedback.md (or docs/product/feedback.md)
 as F-NN entries the agent reads in the `feedback` phase.
 
@@ -33,14 +35,26 @@ except ImportError:  # pragma: no cover
     spec_status = None
 
 ARTIFACT_ORDER = ["product.md", "domain.md", "brief.md", "spec.md", "design.md", "tests.md", "feedback.md"]
+WIREFRAME_DIR = "wireframes"
+RAW_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
+             ".svg": "image/svg+xml"}
 FB_HEAD_RE = re.compile(r"^## (F-\d{2}) \[(.+?)\] \[(.*?)\] (open|resolved)\s*$")
 
 # --- feedback file --------------------------------------------------------------
 
 
 def feedback_path(root: Path, rel: str) -> Path:
-    p = root / rel
-    return p.parent / "feedback.md"
+    """The feedback.md a comment on `rel` belongs to — screens report to their feature."""
+    d = (root / rel).parent
+    if d.name == WIREFRAME_DIR:
+        d = d.parent
+    return d / "feedback.md"
+
+
+def feedback_label(rel: str) -> str:
+    """How a file is named inside feedback.md: `spec.md`, or `wireframes/<file>.html`."""
+    p = Path(rel)
+    return f"{WIREFRAME_DIR}/{p.name}" if p.parent.name == WIREFRAME_DIR else p.name
 
 
 def parse_feedback(path: Path) -> list[dict]:
@@ -136,8 +150,13 @@ def build_tree(root: Path) -> dict:
     forbidden = spec_lint.load_forbidden(feats) if (spec_lint and feats.exists()) else []
     if feats.exists():
         for d in sorted(p for p in feats.iterdir() if p.is_dir() and not p.name.startswith(".")):
-            entry = {"slug": d.name, "files": [{"name": n, "path": f"features/{d.name}/{n}"} for n in files_in(d)],
-                     "lint": None, "open_feedback": 0, "next": None}
+            files = [{"name": n, "path": f"features/{d.name}/{n}", "kind": "md"} for n in files_in(d)]
+            screens = [{"name": p.name, "path": f"features/{d.name}/{WIREFRAME_DIR}/{p.name}", "kind": "wireframe"}
+                       for p in sorted((d / WIREFRAME_DIR).glob("*.html"))]
+            if screens:  # after tests.md, before feedback.md
+                at = next((i for i, f in enumerate(files) if f["name"] == "feedback.md"), len(files))
+                files[at:at] = screens
+            entry = {"slug": d.name, "files": files, "lint": None, "open_feedback": 0, "next": None}
             entry["open_feedback"] = sum(1 for i in parse_feedback(d / "feedback.md") if i["status"] == "open")
             if spec_lint:
                 try:
@@ -174,13 +193,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _safe(self, rel: str) -> Path | None:
+    def _safe(self, rel: str, suffixes: tuple[str, ...] = (".md",)) -> Path | None:
         p = (self.root / rel).resolve()
         try:
             p.relative_to(self.root.resolve())
         except ValueError:
             return None
-        return p if p.suffix == ".md" else None
+        return p if p.suffix in suffixes else None
 
     def do_GET(self):
         url = urllib.parse.urlparse(self.path)
@@ -196,13 +215,29 @@ class Handler(BaseHTTPRequestHandler):
             self._json(build_tree(self.root))
         elif url.path == "/api/doc":
             rel = q.get("path", [""])[0]
-            p = self._safe(rel)
+            p = self._safe(rel, (".md", ".html"))
             if not p or not p.exists():
                 return self._json({"error": "not found"}, 404)
+            label = feedback_label(rel)
             fb = parse_feedback(feedback_path(self.root, rel))
-            self._json({"path": rel, "content": p.read_text(encoding="utf-8"),
-                        "comments": [c for c in fb if c["file"] == p.name],
+            wireframe = p.suffix == ".html"
+            self._json({"path": rel, "label": label, "kind": "wireframe" if wireframe else "md",
+                        "content": "" if wireframe else p.read_text(encoding="utf-8"),
+                        "comments": [c for c in fb if c["file"] == label],
                         "all_comments": fb})
+        elif url.path.startswith("/files/"):
+            # wireframe screens and .wireframe.css, served under their real paths so
+            # relative links and the shared stylesheet resolve inside the iframe
+            rel = urllib.parse.unquote(url.path[len("/files/"):])
+            p = self._safe(rel, tuple(RAW_TYPES))
+            if not p or not p.is_file():
+                return self._json({"error": "not found"}, 404)
+            body = p.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", RAW_TYPES[p.suffix])
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self._json({"error": "not found"}, 404)
 
@@ -211,7 +246,7 @@ class Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", "0"))
         data = json.loads(self.rfile.read(n) or b"{}")
         rel = data.get("path", "")
-        p = self._safe(rel)
+        p = self._safe(rel, (".md", ".html"))
         if not p:
             return self._json({"error": "bad path"}, 400)
         fbp = feedback_path(self.root, rel)
@@ -219,7 +254,7 @@ class Handler(BaseHTTPRequestHandler):
             text = (data.get("text") or "").strip()
             if not text:
                 return self._json({"error": "empty comment"}, 400)
-            item = append_feedback(fbp, p.name, data.get("anchor", ""), data.get("quote", ""), text,
+            item = append_feedback(fbp, feedback_label(rel), data.get("anchor", ""), data.get("quote", ""), text,
                                    data.get("author") or self.author)
             return self._json(item, 201)
         if url.path == "/api/feedback/status":
@@ -246,6 +281,7 @@ nav h1{font-size:13px;font-weight:600;margin:0 0 14px;color:var(--muted)}
 nav .grp{margin:0 0 16px}nav .grp>div{font-weight:600;font-size:13px;padding:2px 6px;display:flex;justify-content:space-between;align-items:center}
 nav a{display:block;padding:3px 6px 3px 18px;color:var(--ink);text-decoration:none;border-radius:4px;font-size:14px}
 nav a:hover{background:var(--panel)}nav a.on{background:var(--panel);font-weight:600}
+nav a.wf::before{content:"\25a2\a0";color:var(--muted)}
 .pill{font-size:11px;border-radius:9px;padding:0 7px;line-height:17px;color:#fff}.pill.e{background:var(--err)}.pill.w{background:var(--warn)}.pill.ok{background:var(--ok)}.pill.f{background:var(--link)}
 main{overflow:auto;padding:36px 48px 120px}
 article{max-width:74ch;margin:0 auto;font-family:Charter,"Iowan Old Style","Palatino Linotype",Georgia,serif;font-size:17px;line-height:1.62}
@@ -262,6 +298,11 @@ article th{font-weight:600;color:var(--muted)}article blockquote{margin:8px 0;pa
 article .mermaid{background:#fff;border:1px solid var(--rule);border-radius:6px;padding:10px;margin:14px 0}
 @media(prefers-color-scheme:dark){article .mermaid{background:#f4f4f0}}
 article li{margin:2px 0}article .has-fb{position:relative}
+article.wf{max-width:900px;font-family:system-ui,sans-serif;font-size:15px}
+.wfbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 0 10px;color:var(--muted);font-size:13px}
+.wfbar>span{min-width:0}.wfbar button{flex:none;font:13px system-ui;padding:4px 10px;border:1px solid var(--rule);border-radius:5px;background:var(--panel);color:var(--ink);cursor:pointer}
+iframe.wf{width:100%;height:calc(100vh - 140px);border:1px solid var(--rule);background:#fff}
+main:has(article.wf){padding-bottom:24px}
 article .has-fb::before{content:attr(data-fb);position:absolute;left:-3.2em;top:.35em;font:600 11px system-ui;color:var(--mark-ink);background:var(--mark);border-radius:9px;padding:0 6px;line-height:17px}
 mark{background:var(--mark);color:inherit;padding:0 2px}
 aside{border-left:1px solid var(--rule);overflow:auto;padding:18px 16px;background:var(--panel)}
@@ -305,10 +346,21 @@ function renderTree(){const t=$('#tree');let h='';
   const pills=(e?`<span class="pill e">${e}</span>`:w?`<span class="pill w">${w}</span>`:f.lint?'<span class="pill ok">ok</span>':'')+(f.open_feedback?` <span class="pill f">${f.open_feedback}</span>`:'');
   h+=`<div class="grp"><div><span>${esc(f.slug)}</span><span>${pills}</span></div>`+f.files.map(x=>link(x)).join('')+'</div>';}
  t.innerHTML=h;}
-function link(f){return `<a href="#${f.path}" data-p="${f.path}" class="${cur===f.path?'on':''}">${f.name}</a>`;}
+function link(f){const c=(cur===f.path?'on ':'')+(f.kind==='wireframe'?'wf':'');return `<a href="#${f.path}" data-p="${f.path}" class="${c.trim()}">${f.name}</a>`;}
 async function open(path){cur=path;const d=await (await fetch('/api/doc?path='+encodeURIComponent(path))).json();
  if(d.error){$('#doc').innerHTML='<p class="empty">Not found.</p>';return;}
- renderTree();const art=$('#doc');art.innerHTML=marked.parse(d.content,{gfm:true});
+ renderTree();const art=$('#doc');art.className=d.kind==='wireframe'?'wf':'';
+ if(d.kind==='wireframe'){const src='/files/'+path.split('/').map(encodeURIComponent).join('/');
+  art.innerHTML=`<div class="wfbar"><span><b>${esc(d.label)}</b><span id="wfnote"></span></span><button id="wfc">Comment on this screen</button></div>
+   <iframe class="wf" id="wff" sandbox="allow-scripts" src="${src}"></iframe>`;
+  $('#wfc').onclick=()=>{pending={anchor:'',quote:''};$('#ctx').textContent=d.label;
+   $('#composer').style.display='block';$('#text').value='';$('#text').focus();};
+  // the frame is sandboxed, so its own links can't update this page: say so instead of
+  // filing the comment against the screen the reviewer stopped looking at
+  let loads=0;$('#wff').onload=()=>{if(++loads>1){$('#wfc').style.display='none';
+   $('#wfnote').textContent=' — following a link inside the screen; pick that screen on the left to comment on it';}};
+  renderSide(d);return;}
+ art.innerHTML=marked.parse(d.content,{gfm:true});
  art.querySelectorAll('h1,h2,h3,h4').forEach(h=>{const m=h.textContent.match(/\b(REQ-\d{2}|S-\d{2}\.\d+|D-\d{2}|X-\d{2}|Q-\d{2}|F-\d{2}|INV-\d{2})\b/);
   h.id=m?m[1]:h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
   if(h.tagName!=='H1'){const a=document.createElement('a');a.className='anchor';a.href='#'+path+'@'+h.id;a.textContent='#';h.appendChild(a);}});
@@ -318,13 +370,13 @@ async function open(path){cur=path;const d=await (await fetch('/api/doc?path='+e
  for(const [id,n] of Object.entries(counts)){const h=document.getElementById(id);if(h){h.classList.add('has-fb');h.dataset.fb=n;}}
  renderSide(d);const frag=location.hash.split('@')[1];if(frag){const el=document.getElementById(frag);if(el)el.scrollIntoView({block:'start'});}else{$('main').scrollTop=0;}}
 function renderSide(d){const slug=cur.split('/')[1]||'product';const f=tree.features.find(x=>x.slug===slug);const L=$('#lint');
- const N=$('#next');N.innerHTML=(f&&f.next&&cur.includes('/features/'))?`<div class="next"><b>${esc(f.next.phase)}</b>${esc(f.next.who)}: ${esc(f.next.next).replace(/`([^`]+)`/g,'<code>$1</code>')}</div>`:'';
- if(f&&f.lint&&cur.includes('/features/')){const e=f.lint.errors,w=f.lint.warnings;
+ const N=$('#next');N.innerHTML=(f&&f.next&&cur.startsWith('features/'))?`<div class="next"><b>${esc(f.next.phase)}</b>${esc(f.next.who)}: ${esc(f.next.next).replace(/`([^`]+)`/g,'<code>$1</code>')}</div>`:'';
+ if(f&&f.lint&&cur.startsWith('features/')){const e=f.lint.errors,w=f.lint.warnings;
   L.innerHTML=(e.length||w.length)?e.map(x=>`<div class="e">${esc(x)}</div>`).join('')+w.map(x=>`<div class="w">${esc(x)}</div>`).join(''):'<div class="ok">Lint: no errors, no warnings.</div>';}
  else L.innerHTML='';
- const mine=d.all_comments.filter(c=>c.file===cur.split('/').pop());const others=d.all_comments.length-mine.length;
- $('#side-title').textContent=`Feedback on ${cur.split('/').pop()}`+(others?` (+${others} on other files)`:'');
- const C=$('#comments');if(!mine.length){C.innerHTML='<p class="empty">No comments yet. Select text in the document to add one.</p>';return;}
+ const mine=d.all_comments.filter(c=>c.file===d.label);const others=d.all_comments.length-mine.length;
+ $('#side-title').textContent=`Feedback on ${d.label}`+(others?` (+${others} on other files)`:'');
+ const C=$('#comments');if(!mine.length){C.innerHTML='<p class="empty">No comments yet. Select text in the document — or use “Comment on this screen” — to add one.</p>';return;}
  C.innerHTML=mine.slice().reverse().map(c=>`<div class="fb ${c.status}"><div class="h"><span>${c.id}</span>${c.anchor?`<a href="#${cur}@${c.anchor}">${esc(c.anchor)}</a>`:''}</div>
   <div class="m">${esc(c.meta)}</div>${c.quote?`<blockquote>${esc(c.quote)}</blockquote>`:''}<p>${esc(c.text)}</p>
   ${c.status==='resolved'?`<div class="r">Resolved: ${esc(c.resolution)}</div><button data-id="${c.id}" data-st="open">Reopen</button>`:`<button data-id="${c.id}" data-st="resolved">Mark resolved</button>`}</div>`).join('');
