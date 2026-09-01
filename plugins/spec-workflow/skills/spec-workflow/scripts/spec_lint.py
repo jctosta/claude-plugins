@@ -6,14 +6,21 @@ Usage:
     spec_lint.py docs/features                 # every feature folder
 
 Exit code 1 on any error. Warnings never fail the run but must be acknowledged
-in review. Forbidden words can be extended per project via
-docs/features/.spec-lint.json  ->  {"forbidden": ["word", ...]}
+in review. Per-project settings live in docs/features/.spec-lint.json:
+
+    {"forbidden": ["word", ...],
+     "tests": {"<slug>": ["glob relative to --tests-dir", ...]}}
+
+`forbidden` extends the implementation-word list. `tests` maps a feature slug to
+the test files that belong to it, for layouts that don't name paths after the
+slug — see feature_test_files().
 
 Only the standard library is used on purpose: the script must run anywhere.
 """
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import re
 import sys
@@ -60,6 +67,8 @@ DEFAULT_FORBIDDEN = [
     r"\bExpress\b", r"\bPrisma\b", r"\bSQLAlchemy\b", r"\bCelery\b", r"\bKafka\b",
     r"\bRabbitMQ\b", r"\bTailwind\b", r"\bpytest\b", r"\bvitest\b",
 ]
+
+CODE_EXTS = {".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".rb", ".java", ".kt", ".cs"}
 
 # --- model ------------------------------------------------------------------
 
@@ -439,15 +448,52 @@ def lint_wireframes(folder: Path, rep: Report, reqs: list[Requirement]) -> None:
 # --- code markers -----------------------------------------------------------
 
 
-def lint_code(tests_dir: Path, rep: Report, reqs: list[Requirement], rows: dict[str, list[tuple[str, str]]], feature_slug: str) -> None:
+def slug_variants(slug: str) -> set[str]:
+    """The spellings a path may use for a slug: kebab, snake, and joined."""
+    base = slug.strip().lower()
+    return {base, base.replace("-", "_"), base.replace("-", "")}
+
+
+def feature_test_files(tests_dir: Path, feature_slug: str, globs: list[str] | None = None) -> list[Path]:
+    """The test files that belong to one feature.
+
+    Scenario and test IDs restart per feature — every feature has an S-01.1 —
+    so markers may only be read from that feature's own files. Reading the whole
+    tree would let one feature's tests satisfy another's traceability.
+
+    A file belongs to the feature when its path under `tests_dir` names the slug
+    (`tests/<slug>/test_x.py`, `tests/test_<slug>.py`, kebab or snake), or when
+    it matches one of `globs` — the slug's entry in the `tests` map of
+    docs/features/.spec-lint.json, for layouts that don't name paths after it.
+    """
+    variants = slug_variants(feature_slug)
+    out: list[Path] = []
+    for p in sorted(tests_dir.rglob("*")):
+        if p.suffix not in CODE_EXTS or "node_modules" in p.parts or not p.is_file():
+            continue
+        rel = p.relative_to(tests_dir).as_posix().lower()
+        if globs:
+            if any(fnmatch.fnmatch(rel, g.lower()) for g in globs):
+                out.append(p)
+        elif any(v in rel.replace("_", "-") or v in rel for v in variants):
+            out.append(p)
+    return out
+
+
+def lint_code(tests_dir: Path, rep: Report, reqs: list[Requirement], rows: dict[str, list[tuple[str, str]]],
+              feature_slug: str, globs: list[str] | None = None) -> None:
     all_sids = {s.sid for r in reqs for s in r.scenarios}
     all_tids = {tid for lst in rows.values() for tid, _ in lst}
     found_s: set[str] = set()
     found_t: set[str] = set()
-    exts = {".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".rb", ".java", ".kt", ".cs"}
-    for p in tests_dir.rglob("*"):
-        if p.suffix not in exts or "node_modules" in p.parts:
-            continue
+    files = feature_test_files(tests_dir, feature_slug, globs)
+    if not files:
+        rep.warn("code", None,
+                 f"no test file under {tests_dir} belongs to '{feature_slug}' — name the path "
+                 f"after the slug, or map it in .spec-lint.json: "
+                 f'{{"tests": {{"{feature_slug}": ["<glob>"]}}}}')
+        return
+    for p in files:
         try:
             t = p.read_text(encoding="utf-8", errors="ignore")
         except OSError:
@@ -478,19 +524,31 @@ def lint_code(tests_dir: Path, rep: Report, reqs: list[Requirement], rows: dict[
 # --- driver -----------------------------------------------------------------
 
 
+def load_config(features_root: Path) -> dict:
+    cfg = features_root / ".spec-lint.json"
+    if not cfg.exists():
+        return {}
+    try:
+        return json.loads(cfg.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        print(f"warning: {cfg}: {e}", file=sys.stderr)
+        return {}
+
+
 def load_forbidden(features_root: Path) -> list[re.Pattern]:
     pats = list(DEFAULT_FORBIDDEN)
-    cfg = features_root / ".spec-lint.json"
-    if cfg.exists():
-        try:
-            extra = json.loads(cfg.read_text(encoding="utf-8")).get("forbidden", [])
-            pats += [rf"\b{re.escape(w)}\b" for w in extra]
-        except json.JSONDecodeError as e:
-            print(f"warning: {cfg}: {e}", file=sys.stderr)
+    pats += [rf"\b{re.escape(w)}\b" for w in load_config(features_root).get("forbidden", [])]
     return [re.compile(p, re.I) for p in pats]
 
 
-def lint_feature(folder: Path, tests_dir: Path | None, forbidden: list[re.Pattern]) -> Report:
+def load_test_map(features_root: Path) -> dict[str, list[str]]:
+    """slug -> globs of the test files that belong to it (see feature_test_files)."""
+    raw = load_config(features_root).get("tests", {})
+    return {k: ([v] if isinstance(v, str) else list(v)) for k, v in raw.items()} if isinstance(raw, dict) else {}
+
+
+def lint_feature(folder: Path, tests_dir: Path | None, forbidden: list[re.Pattern],
+                 tests_globs: list[str] | None = None) -> Report:
     rep = Report(folder.name)
     brief, spec, design, tests = (folder / n for n in ("brief.md", "spec.md", "design.md", "tests.md"))
     meta: dict[str, str] = {}
@@ -537,7 +595,7 @@ def lint_feature(folder: Path, tests_dir: Path | None, forbidden: list[re.Patter
                 rep.warn("feedback.md", i, f"{fid} anchors unknown id {anchor}")
     if tests_dir and reqs and rows:
         if tests_dir.exists():
-            lint_code(tests_dir, rep, reqs, rows, folder.name)
+            lint_code(tests_dir, rep, reqs, rows, folder.name, tests_globs)
         else:
             rep.warn("code", None, f"--tests-dir {tests_dir} does not exist")
     # matrix for --matrix
@@ -568,8 +626,9 @@ def main() -> int:
         features = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith("."))
         features_root = root
     forbidden = load_forbidden(features_root)
+    test_map = load_test_map(features_root)
 
-    reports = [lint_feature(f, args.tests_dir, forbidden) for f in features]
+    reports = [lint_feature(f, args.tests_dir, forbidden, test_map.get(f.name)) for f in features]
     total_err = sum(len(r.errors) for r in reports)
 
     if args.json:
