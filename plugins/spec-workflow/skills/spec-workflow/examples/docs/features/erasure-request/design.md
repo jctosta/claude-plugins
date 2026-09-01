@@ -1,8 +1,10 @@
 # Design: Erasure request
 
-slug: erasure-request
-status: approved
-spec: ./spec.md
+| Field | Value |
+|---|---|
+| slug | erasure-request |
+| status | approved |
+| spec | ./spec.md |
 
 ## Components
 | Name | Responsibility | Location | Status |

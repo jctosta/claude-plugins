@@ -1,11 +1,13 @@
 # Test spec: Erasure request
 
-slug: erasure-request
-status: skeletons-red
-spec: ./spec.md
-design: ./design.md
-framework: pytest
-marker convention: @pytest.mark.scenario("S-NN.M") + test_TNN_Ma_<name>
+| Field | Value |
+|---|---|
+| slug | erasure-request |
+| status | skeletons-red |
+| spec | ./spec.md |
+| design | ./design.md |
+| framework | pytest |
+| marker convention | `@pytest.mark.scenario("S-NN.M") + test_TNN_Ma_<name>` |
 
 ## Matrix
 | Scenario | Test ID | Level | Fixture / setup | Asserts |

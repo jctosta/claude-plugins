@@ -1,6 +1,8 @@
 # Domain: Lacre (example excerpt)
 
-updated: 2026-08-31
+| Field | Value |
+|---|---|
+| updated | 2026-08-31 |
 
 ## Glossary
 | Term | Definition | Notes |

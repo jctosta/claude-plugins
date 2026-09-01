@@ -1,7 +1,9 @@
 # Product: <name>
 
-status: draft | active
-updated: <YYYY-MM-DD>
+| Field | Value |
+|---|---|
+| status | draft \| active |
+| updated | <YYYY-MM-DD> |
 
 ## Vision
 <One paragraph. Actor + outcome, testable, no adjectives that can't be checked.>

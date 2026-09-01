@@ -1,17 +1,19 @@
 # Spec: Erasure request
 
-slug: erasure-request
-status: approved
-brief: ./brief.md
+| Field | Value |
+|---|---|
+| slug | erasure-request |
+| status | approved |
+| brief | ./brief.md |
 
 ## Requirements
 
 ## REQ-01: Erasure request submission
 The system SHALL allow an authenticated subject to submit an erasure request covering all personal data held under their identifier.
 
-Actors: Data subject, Notifier
-Preconditions: subject authenticated; no erasure Request in PENDING or IN_PROGRESS (INV-01)
-Postconditions: a Request of type erasure exists in PENDING with a deadline; subject has a confirmation
+| Actors | Preconditions | Postconditions |
+|---|---|---|
+| Data subject, Notifier | subject authenticated; no erasure Request in PENDING or IN_PROGRESS (INV-01) | a Request of type erasure exists in PENDING with a deadline; subject has a confirmation |
 
 ### S-01.1 Main flow — request accepted
 - GIVEN an authenticated subject with no pending erasure request
@@ -39,9 +41,9 @@ Postconditions: a Request of type erasure exists in PENDING with a deadline; sub
 ## REQ-02: Retention obligation exception
 The system SHALL erase every personal data category except those under a retention obligation, reporting the retained categories and their legal basis.
 
-Actors: DPO, Data subject, Notifier
-Preconditions: Request in IN_PROGRESS
-Postconditions: erasable categories erased; Request COMPLETED; subject has a completion notice
+| Actors | Preconditions | Postconditions |
+|---|---|---|
+| DPO, Data subject, Notifier | Request in IN_PROGRESS | erasable categories erased; Request COMPLETED; subject has a completion notice |
 
 ### S-02.1 Main flow — partial erasure with retained categories
 - GIVEN a subject with fiscal records under a retention obligation and an erasure Request in IN_PROGRESS

@@ -1,10 +1,12 @@
 # Brief: <feature title>
 
-slug: <kebab-slug>
-capability: <from product.md capability map>
-rigor: lite | full — <one-line justification>
-status: draft | approved | blocked | shipped
-source: <GH-123 / CU-abc / conversation> — <url if any>
+| Field | Value |
+|---|---|
+| slug | <kebab-slug> |
+| capability | <from product.md capability map> |
+| rigor | lite \| full — <one-line justification> |
+| status | draft \| approved \| blocked \| shipped |
+| source | <GH-123 / CU-abc / conversation> — <url if any> |
 
 ## Original request
 > <verbatim ticket text, or "None — originated in conversation">

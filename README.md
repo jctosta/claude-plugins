@@ -82,8 +82,9 @@ tests/run_checks.py                  # CI entry point
 2. Nine deliberately broken copies of the example each trigger the lint (wrong scenario heading, missing WHEN, implementation word in the spec, test-ID mismatch, uncovered scenario, blocking question on an approved brief, wireframe covering an unknown scenario, dead wireframe link, main flow with no screen).
 3. `spec_status` parses the example and derives the expected phase.
 4. The review site's embedded JS parses (`node --check`), the sidebar lists a feature's wireframes, and a comment round-trips through `feedback.md` (append → parse → resolve) — for a Markdown artifact and for a wireframe screen.
-5. Code markers stay scoped per feature: two features sharing `S-01.1` don't satisfy each other, and `.spec-lint.json` can map test files to a slug.
-6. A brief marked `shipped` only reads as terminal once the lint, the open feedback, the mandatory artifacts and `tests.md` back it up.
+5. Every artifact's header is a two-column table that parses (escaped pipes included), and the legacy `key: value` block still parses.
+6. Code markers stay scoped per feature: two features sharing `S-01.1` don't satisfy each other, and `.spec-lint.json` can map test files to a slug.
+7. A brief marked `shipped` only reads as terminal once the lint, the open feedback, the mandatory artifacts and `tests.md` back it up.
 
 A second job runs `claude plugin validate .` for manifest/frontmatter schema errors.
 

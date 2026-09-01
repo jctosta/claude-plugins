@@ -12,9 +12,11 @@ Checks:
 4. The review site's embedded JavaScript parses (node --check), it lists a
    feature's wireframes, and its backend round-trips a comment (including one
    on a wireframe screen) through feedback.md.
-5. Code markers are discovered per feature: two features sharing S-01.1 don't
+5. Document headers are two-column tables that parse, escaped pipes included,
+   with the legacy `key: value` block still readable.
+6. Code markers are discovered per feature: two features sharing S-01.1 don't
    satisfy each other's traceability, and .spec-lint.json can map files to a slug.
-6. A brief marked `shipped` is only accepted as terminal once the lint, the open
+7. A brief marked `shipped` is only accepted as terminal once the lint, the open
    feedback, the mandatory artifacts and tests.md all back it up.
 Exits non-zero on the first failure.
 """
@@ -159,7 +161,27 @@ with tempfile.TemporaryDirectory() as td:
     check("wireframes: comment resolves", set_status(fb, wf_item["id"], "resolved", "edited the screen")
           and any(i["id"] == wf_item["id"] and i["status"] == "resolved" for i in parse_feedback(fb)))
 
-print("5. markers are scoped per feature")
+print("5. document headers are tables")
+HEADERED = ["product/product.md", "product/domain.md"] + [
+    f"features/erasure-request/{n}" for n in ("brief.md", "spec.md", "design.md", "tests.md")]
+for rel in HEADERED:
+    body = (EXAMPLE / rel).read_text(encoding="utf-8").splitlines()
+    check(f"header: {rel} renders as a table", body[2:4] == ["| Field | Value |", "|---|---|"],
+          " / ".join(body[2:4]))
+check("header: no run-on `key: value` block survives in the example or templates",
+      not [str(p) for p in sorted(list(EXAMPLE.rglob("*.md")) + list((SKILL / "assets/templates").glob("*.md")))
+           if re.match(r"^\w[\w ]*?:\s*\S", (p.read_text(encoding="utf-8").splitlines() + [""])[2])],
+      "still block-shaped")
+check("header: the table parses", spec_lint.parse_fields((EXAMPLE / "features/erasure-request/tests.md")
+                                                         .read_text(encoding="utf-8")).get("status") == "skeletons-red")
+check("header: a `|` in a value survives escaping",
+      spec_lint.parse_fields("# T\n\n| Field | Value |\n|---|---|\n| rigor | lite \\| full — why |\n")["rigor"]
+      == "lite | full — why")
+check("header: the legacy key: value block still parses",
+      spec_lint.parse_fields("# T\n\nslug: legacy\nstatus: approved\n")
+      == {"slug": "legacy", "status": "approved"})
+
+print("6. markers are scoped per feature")
 with tempfile.TemporaryDirectory() as td:
     feats = Path(td) / "docs/features"
     for slug in ("feature-a", "feature-b"):
@@ -193,7 +215,7 @@ with tempfile.TemporaryDirectory() as td:
     check("scoping: .spec-lint.json can map files to a slug",
           [w for w in spec_lint.lint_feature(fb, tests_dir, forbidden, globs).warnings if w.startswith("code")] == [])
 
-print("6. shipped is verified, not trusted")
+print("7. shipped is verified, not trusted")
 with tempfile.TemporaryDirectory() as td:
     base = Path(td) / "features"
     forbidden = spec_lint.load_forbidden(base)
@@ -202,7 +224,8 @@ with tempfile.TemporaryDirectory() as td:
         f = base / name
         shutil.copytree(FEATURE, f)
         b = f / "brief.md"
-        b.write_text(b.read_text(encoding="utf-8").replace("status: approved", "status: shipped", 1), encoding="utf-8")
+        b.write_text(b.read_text(encoding="utf-8").replace("| status | approved |", "| status | shipped |", 1),
+                     encoding="utf-8")
         if edit:
             edit(f)
         return f
@@ -217,7 +240,8 @@ with tempfile.TemporaryDirectory() as td:
 
     def green(f: Path) -> None:
         tm = f / "tests.md"
-        tm.write_text(tm.read_text(encoding="utf-8").replace("status: skeletons-red", "status: green", 1), encoding="utf-8")
+        tm.write_text(tm.read_text(encoding="utf-8").replace("| status | skeletons-red |", "| status | green |", 1),
+                      encoding="utf-8")
 
     check("shipped: lint errors win", phase(shipped("with-lint-errors", break_spec)) == "blocked by lint",
           phase(base / "with-lint-errors"))

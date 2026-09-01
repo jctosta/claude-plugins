@@ -1,6 +1,8 @@
 # Domain: <product name>
 
-updated: <YYYY-MM-DD>
+| Field | Value |
+|---|---|
+| updated | <YYYY-MM-DD> |
 
 ## Glossary
 | Term | Definition | Notes |

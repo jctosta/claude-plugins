@@ -7,6 +7,12 @@ want a `.skill` artifact for claude.ai.
 ## Unreleased
 
 ### spec-workflow
+- Artifact headers are now a two-column `| Field | Value |` table instead of a
+  block of `key: value` lines, which Markdown collapsed into one run-on
+  paragraph on the review site. Same for the `Actors / Preconditions /
+  Postconditions` trio under each requirement in `spec.md`. Templates, the
+  worked example and the parsers moved together; the old block form is still
+  read, and the lint notes (as info, never an error) which documents to convert.
 - Fixed: `--tests-dir` marker discovery unioned every file under the tests
   directory, so one feature's `S-01.1` satisfied another's traceability and a
   feature with no tests at all could report clean. Both `spec_lint` and

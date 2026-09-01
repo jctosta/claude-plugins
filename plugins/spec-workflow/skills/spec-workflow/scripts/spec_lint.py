@@ -47,6 +47,7 @@ TEST_ID_RE = re.compile(r"^T-(\d{2})\.(\d+)([a-z])$|^T-(X\d{2})([a-z])$")
 QROW_RE = re.compile(r"^\|\s*(Q-\d{2})\s*\|(.+?)\|\s*(\w[\w /]*)\s*\|\s*(yes|no)\s*\|", re.I)
 FB_HEAD_RE = re.compile(r"^## (F-\d{2}) \[(.+?)\] \[(.*?)\] (open|resolved)\s*$")
 FIELD_RE = re.compile(r"^(\w[\w ]*?):\s*(.+?)\s*$")
+META_ROW_RE = re.compile(r"^\|\s*(\w[\w ]*?)\s*\|\s*(.+?)\s*\|\s*$")
 FENCE_RE = re.compile(r"^```")
 
 DEFAULT_FORBIDDEN = [
@@ -113,12 +114,40 @@ def _fmt(f: str, line: int | None, msg: str) -> str:
     return f"{f}:{line}: {msg}" if line else f"{f}: {msg}"
 
 
-def _fields(text: str) -> dict[str, str]:
-    """Top-of-file `key: value` lines before the first heading after the title."""
+def legacy_header(text: str) -> bool:
+    """True when the header is still the pre-table `key: value` block."""
+    for ln in text.splitlines()[1:40]:
+        if ln.startswith("## ") or META_ROW_RE.match(ln):
+            return False
+        if FIELD_RE.match(ln):
+            return True
+    return False
+
+
+def parse_fields(text: str) -> dict[str, str]:
+    """The document's header fields, before the first heading after the title.
+
+    Current form is a two-column table, which is what renders on the review site:
+
+        | Field | Value |
+        |---|---|
+        | slug | erasure-request |
+
+    The older `key: value` block is still read, so documents written before the
+    table form keep working. A `|` inside a value is escaped as `\|` in the
+    table and unescaped here.
+    """
     out: dict[str, str] = {}
     for ln in text.splitlines()[1:40]:
         if ln.startswith("## "):
             break
+        m = META_ROW_RE.match(ln)
+        if m:
+            key, val = m.group(1).strip().lower(), m.group(2).replace("\\|", "|").strip()
+            if key == "field" and val.lower() == "value":  # the table's own header row
+                continue
+            out[key] = val
+            continue
         m = FIELD_RE.match(ln)
         if m:
             out[m.group(1).strip().lower()] = m.group(2)
@@ -131,7 +160,7 @@ def _fields(text: str) -> dict[str, str]:
 def lint_brief(path: Path, rep: Report) -> dict[str, str]:
     text = path.read_text(encoding="utf-8")
     f = path.name
-    meta = _fields(text)
+    meta = parse_fields(text)
     for key in ("slug", "capability", "rigor", "status"):
         if key not in meta:
             rep.err(f, None, f"missing header field '{key}:'")
@@ -576,6 +605,10 @@ def lint_feature(folder: Path, tests_dir: Path | None, forbidden: list[re.Patter
             rows = lint_tests(tests, rep, reqs, xcuts)
     else:
         rep.info.append("tests.md: not written yet")
+    for name, path in (("brief.md", brief), ("spec.md", spec), ("design.md", design), ("tests.md", tests)):
+        if path.exists() and legacy_header(path.read_text(encoding="utf-8")):
+            rep.info.append(f"{name}: header is the old `key: value` block — the two-column table "
+                            f"in assets/templates/{name} renders as a table on the site")
     lint_wireframes(folder, rep, reqs)
     fb = folder / "feedback.md"
     if fb.exists():

@@ -85,6 +85,8 @@ Escalate, never de-escalate silently: if refine reveals a contract change in a l
 
 Never renumber. If a requirement is dropped, keep the number out of use and note it as removed.
 
+**Document metadata is a table.** Every artifact opens with `# <Title>` and a two-column table — `| Field | Value |`, then one row per field (`slug`, `status`, and whatever else the template lists). Consecutive `key: value` lines are one paragraph in Markdown, so on the review site they render as a single run-on line; the table renders as a table. Escape a `|` inside a value as `\|`. Requirement metadata in `spec.md` follows the same rule: one `| Actors | Preconditions | Postconditions |` row under the requirement statement. The scripts still read the old block form, so existing documents keep working — the lint says which ones to convert.
+
 **Behavior vs. implementation.** `spec.md` states what an outside observer can verify: inputs, outputs, error conditions, timing, constraints. It never names libraries, tables, classes, functions, queues or endpoints — those go in `design.md`. The test: if the implementation could change without changing externally visible behavior, it doesn't belong in the spec. The lint enforces a forbidden-word list; treat a lint hit as a signal that the sentence is about the *how*.
 
 **Requirement language.** One behavior per requirement, one RFC 2119 keyword (SHALL/MUST for mandatory, SHOULD for recommended, MAY for optional). A requirement with "and also" clauses is several requirements — split it.
