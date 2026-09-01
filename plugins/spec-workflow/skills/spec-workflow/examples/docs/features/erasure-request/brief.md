@@ -1,10 +1,12 @@
 # Brief: Erasure request
 
-slug: erasure-request
-capability: subject-requests
-rigor: full — personal data, external notifier, legal deadline
-status: approved
-source: conversation
+| Field | Value |
+|---|---|
+| slug | erasure-request |
+| capability | subject-requests |
+| rigor | full — personal data, external notifier, legal deadline |
+| status | approved |
+| source | conversation |
 
 ## Original request
 > None — originated in conversation

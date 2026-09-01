@@ -1,17 +1,19 @@
 # Spec: <feature title>
 
-slug: <kebab-slug>
-status: draft | approved
-brief: ./brief.md
+| Field | Value |
+|---|---|
+| slug | <kebab-slug> |
+| status | draft \| approved |
+| brief | ./brief.md |
 
 ## Requirements
 
 ## REQ-01: <short title>
 The system SHALL <one observable behavior>.
 
-Actors: <actor>, <actor>
-Preconditions: <state, using lifecycle names from domain.md>
-Postconditions: <observable end state>
+| Actors | Preconditions | Postconditions |
+|---|---|---|
+| <actor>, <actor> | <state, using lifecycle names from domain.md> | <observable end state> |
 
 ### S-01.1 Main flow — <name>
 - GIVEN <state>

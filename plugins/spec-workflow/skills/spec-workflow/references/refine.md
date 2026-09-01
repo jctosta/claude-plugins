@@ -14,7 +14,7 @@ Produces `docs/features/<slug>/spec.md`: the behavioral contract, written as req
 Work requirement by requirement. For each:
 
 1. **State it** in one sentence with one RFC 2119 keyword. Subject is "The system"; object is observable behavior. `The system SHALL reject a submission when the subject already has a PENDING request.`
-2. **Name actors, preconditions, postconditions.** Preconditions reference lifecycle states and invariants from domain.md. Postconditions describe the observable end state — what changed that an outsider could check.
+2. **Name actors, preconditions, postconditions** in the table under the requirement statement. Preconditions reference lifecycle states and invariants from domain.md. Postconditions describe the observable end state — what changed that an outsider could check.
 3. **Write the main flow** as `S-NN.1`: the path where everything goes right. GIVEN sets up state, WHEN is one actor action or one event, THEN/AND list every observable effect — the response, the state change, the notification, the audit record. If a THEN can't be observed from outside the system, it's implementation; move it to design.
 4. **Write alternative flows** `S-NN.2…`: legitimate paths that end in a different valid outcome (duplicate rejected, partial result, user cancels).
 5. **Write exception flows**: things going wrong outside the actor's control (dependency fails, timeout, concurrent edit). For full rigor every requirement needs at least one exception flow; for lite, every requirement that involves any external effect (notification, integration, persistence beyond the request) needs one.

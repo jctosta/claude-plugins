@@ -14,6 +14,7 @@ Resolution: S-01.3 now bounds re-attempts to 24h and alerts the DPO afterwards; 
 2026-08-31 · carlos
 
 Also cover correction requests? No — keep out of scope, just confirm in brief.
+
 Resolution: Confirmed out of scope; brief already lists it.
 
 ## F-03 [wireframes/request-form.html] [] resolved

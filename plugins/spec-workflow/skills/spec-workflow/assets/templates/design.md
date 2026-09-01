@@ -1,8 +1,10 @@
 # Design: <feature title>
 
-slug: <kebab-slug>
-status: draft | approved
-spec: ./spec.md
+| Field | Value |
+|---|---|
+| slug | <kebab-slug> |
+| status | draft \| approved |
+| spec | ./spec.md |
 
 ## Components
 | Name | Responsibility | Location | Status |

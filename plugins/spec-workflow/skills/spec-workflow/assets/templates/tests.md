@@ -1,11 +1,13 @@
 # Test spec: <feature title>
 
-slug: <kebab-slug>
-status: draft | approved | skeletons-red | green
-spec: ./spec.md
-design: ./design.md
-framework: <pytest | vitest | go test>
-marker convention: <e.g. @pytest.mark.scenario("S-NN.M") + test_TNN_Ma_name>
+| Field | Value |
+|---|---|
+| slug | <kebab-slug> |
+| status | draft \| approved \| skeletons-red \| green |
+| spec | ./spec.md |
+| design | ./design.md |
+| framework | <pytest \| vitest \| go test> |
+| marker convention | `<e.g. @pytest.mark.scenario("S-NN.M") + test_TNN_Ma_name>` |
 
 ## Matrix
 | Scenario | Test ID | Level | Fixture / setup | Asserts |

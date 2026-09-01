@@ -1,7 +1,9 @@
 # Product: Lacre (example excerpt)
 
-status: active
-updated: 2026-08-31
+| Field | Value |
+|---|---|
+| status | active |
+| updated | 2026-08-31 |
 
 ## Vision
 A DPO at a Brazilian SMB can receive, track and fulfil any LGPD data-subject request within the legal deadline without asking engineering for help.

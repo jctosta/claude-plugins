@@ -25,7 +25,6 @@ sys.path.insert(0, str(HERE))
 import spec_lint  # noqa: E402
 
 ARTIFACTS = ["brief.md", "spec.md", "design.md", "tests.md"]
-FIELD_RE = re.compile(r"^(\w[\w ]*?):\s*(.+?)\s*$")
 FB_HEAD_RE = re.compile(r"^## (F-\d{2}) \[(.+?)\] \[(.*?)\] (open|resolved)\s*$")
 ROADMAP_ROW = re.compile(r"^\|\s*([a-z0-9][a-z0-9-]*)\s*\|\s*([^|]+?)\s*\|\s*(lite|full)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|")
 SID_RE = re.compile(r"\bS-\d{2}\.\d+\b")
@@ -55,16 +54,10 @@ class FeatureStatus:
 
 
 def _fields(path: Path) -> dict[str, str]:
-    out: dict[str, str] = {}
+    """Header fields of one artifact — table or legacy block, see spec_lint.parse_fields."""
     if not path.exists():
-        return out
-    for ln in path.read_text(encoding="utf-8").splitlines()[1:40]:
-        if ln.startswith("## "):
-            break
-        m = FIELD_RE.match(ln)
-        if m:
-            out[m.group(1).strip().lower()] = m.group(2)
-    return out
+        return {}
+    return spec_lint.parse_fields(path.read_text(encoding="utf-8"))
 
 
 def _open_feedback(folder: Path) -> dict[str, int]:
@@ -134,38 +127,38 @@ def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None,
     elif brief.status == "shipped":
         if missing:
             decide("shipped — incomplete",
-                   f"brief.md says shipped but {', '.join(missing)} missing — write them or reset brief.md status",
+                   f"brief.md says shipped but {', '.join(missing)} missing — write them or reset the `status` row",
                    "human")
         elif tests.status != "green":
             decide("shipped — tests not green",
                    f"brief.md says shipped but tests.md status is '{tests.status or 'unset'}' — "
-                   "set it to green or reset brief.md status", "human")
+                   "set it to green or reset brief.md's `status` row", "human")
         else:
             decide("shipped", "nothing — feature is shipped", "—")
     elif brief.status == "blocked":
-        decide("explore — blocked", "answer the blocking Q-IDs in brief.md, then set status: approved", "human")
+        decide("explore — blocked", "answer the blocking Q-IDs in brief.md, then set the `status` row to `approved`", "human")
     elif brief.status != "approved":
-        decide("explore — awaiting review", "review brief.md; set status: approved (or comment on the site)", "human")
+        decide("explore — awaiting review", "review brief.md; set the `status` row to `approved` (or comment on the site)", "human")
     elif not spec.exists:
         decide("refine", f"`spec-workflow:refine {st.slug}`", "agent")
     elif spec.status != "approved":
-        decide("refine — awaiting review", "review spec.md; set status: approved", "human")
+        decide("refine — awaiting review", "review spec.md; set the `status` row to `approved`", "human")
     elif needs_design and not design.exists:
         decide("design", f"`spec-workflow:design {st.slug}`", "agent")
     elif design.exists and design.status != "approved":
-        decide("design — awaiting review", "review design.md; set status: approved", "human")
+        decide("design — awaiting review", "review design.md; set the `status` row to `approved`", "human")
     elif not tests.exists:
         decide("test-spec", f"`spec-workflow:test-spec {st.slug}`", "agent")
     elif tests.status in ("", "draft"):
-        decide("test-spec — awaiting review", "review tests.md; set status: approved", "human")
+        decide("test-spec — awaiting review", "review tests.md; set the `status` row to `approved`", "human")
     elif tests.status == "approved":
-        decide("test-spec — skeletons", f"write failing test skeletons, set tests.md status: skeletons-red (`spec-workflow:test-spec {st.slug} skeletons`)", "agent")
+        decide("test-spec — skeletons", f"write failing test skeletons, set tests.md `status` to `skeletons-red` (`spec-workflow:test-spec {st.slug} skeletons`)", "agent")
     elif tests.status == "skeletons-red":
         if tests_dir and st.scenarios and st.scenarios_in_code < st.scenarios:
             st.notes.append(f"{st.scenarios - st.scenarios_in_code} scenario(s) have no marker in {tests_dir}")
         decide("implementation", f"`spec-workflow:handoff {st.slug}` if tasks don't exist yet; otherwise pick up the next Backlog.md task", "agent")
     elif tests.status == "green":
-        decide("done — not marked", "set brief.md status: shipped and close the parent task", "either")
+        decide("done — not marked", "set brief.md `status` to `shipped` and close the parent task", "either")
     else:
         decide("unknown", f"tests.md status '{tests.status}' not recognised", "human")
 
