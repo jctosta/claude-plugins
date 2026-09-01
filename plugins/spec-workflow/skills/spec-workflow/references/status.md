@@ -10,6 +10,7 @@ Answers "where are we and what's next" without opening every artifact. Run this 
    - A feature in "awaiting review" for a long time might need the site opened rather than another nudge.
    - Several features at "explore" while none is at "implementation" usually means too much parallel definition — suggest finishing one chain first.
    - Lint warnings count as "next" only if they hide a real problem; say which.
+   - `shipped — incomplete` / `shipped — tests not green` mean someone set `status: shipped` by hand that the artifacts don't back up. Say what's missing; don't treat the feature as done.
    - If the product roadmap and the feature folders disagree (folders not listed, items marked v1 without a folder), point it out — product.md is supposed to be the index.
 
 ## Output

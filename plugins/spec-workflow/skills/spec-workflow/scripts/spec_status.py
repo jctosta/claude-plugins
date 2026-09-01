@@ -78,20 +78,26 @@ def _open_feedback(folder: Path) -> dict[str, int]:
     return counts
 
 
-def _scenarios_in_code(tests_dir: Path | None, sids: set[str]) -> int:
+def _scenarios_in_code(tests_dir: Path | None, sids: set[str], slug: str,
+                       globs: list[str] | None = None) -> int:
+    """How many of this feature's scenarios have a marker in its own test files.
+
+    Scoped per feature: S-IDs restart in every feature, so a marker only counts
+    when it sits in a file that belongs to this slug (see spec_lint.feature_test_files).
+    """
     if not tests_dir or not tests_dir.exists() or not sids:
         return 0
     found: set[str] = set()
-    for p in tests_dir.rglob("*"):
-        if p.suffix in {".py", ".ts", ".tsx", ".js", ".go", ".rs", ".rb", ".java", ".kt", ".cs"} and "node_modules" not in p.parts:
-            try:
-                found |= set(SID_RE.findall(p.read_text(encoding="utf-8", errors="ignore")))
-            except OSError:
-                pass
+    for p in spec_lint.feature_test_files(tests_dir, slug, globs):
+        try:
+            found |= set(SID_RE.findall(p.read_text(encoding="utf-8", errors="ignore")))
+        except OSError:
+            pass
     return len(found & sids)
 
 
-def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None) -> FeatureStatus:
+def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None,
+                   tests_globs: list[str] | None = None) -> FeatureStatus:
     st = FeatureStatus(folder.name)
     meta = {a: _fields(folder / a) for a in ARTIFACTS}
     st.rigor = (meta["brief.md"].get("rigor", "lite").split() or ["lite"])[0].lower()
@@ -102,7 +108,7 @@ def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None)
     st.lint_errors, st.lint_warnings = len(rep.errors), len(rep.warnings)
     sids = {k.split()[0] for k in rep.matrix if k.startswith("S-")}
     st.scenarios = len(sids)
-    st.scenarios_in_code = _scenarios_in_code(tests_dir, sids)
+    st.scenarios_in_code = _scenarios_in_code(tests_dir, sids, st.slug, tests_globs)
 
     a = {x.name: x for x in st.artifacts}
     brief, spec, design, tests = a["brief.md"], a["spec.md"], a["design.md"], a["tests.md"]
@@ -111,16 +117,31 @@ def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None)
     def decide(phase: str, nxt: str, who: str) -> None:
         st.phase, st.next, st.who = phase, nxt, who
 
-    # --- ordered decision ladder: first match wins
-    if brief.status == "shipped":
-        decide("shipped", "nothing — feature is shipped", "—")
-    elif not brief.exists:
+    required = ["brief.md", "spec.md", "tests.md"] + (["design.md"] if needs_design else [])
+    missing = [n for n in required if not a[n].exists]
+
+    # --- ordered decision ladder: first match wins.
+    # `shipped` is set by hand, so it is checked *after* the blocking conditions
+    # and only accepted when the artifacts back it up — a feature is not done
+    # because someone typed that it is.
+    if not brief.exists:
         decide("not started", f"`spec-workflow:explore {st.slug}`", "agent")
     elif st.lint_errors:
         decide("blocked by lint", f"fix {st.lint_errors} lint error(s): `spec-workflow:lint {st.slug}`", "agent")
     elif st.open_feedback:
         files = ", ".join(f"{n} on {f}" for f, n in st.open_feedback.items())
         decide("in review", f"apply open feedback ({files}): `spec-workflow:feedback {st.slug}`", "agent")
+    elif brief.status == "shipped":
+        if missing:
+            decide("shipped — incomplete",
+                   f"brief.md says shipped but {', '.join(missing)} missing — write them or reset brief.md status",
+                   "human")
+        elif tests.status != "green":
+            decide("shipped — tests not green",
+                   f"brief.md says shipped but tests.md status is '{tests.status or 'unset'}' — "
+                   "set it to green or reset brief.md status", "human")
+        else:
+            decide("shipped", "nothing — feature is shipped", "—")
     elif brief.status == "blocked":
         decide("explore — blocked", "answer the blocking Q-IDs in brief.md, then set status: approved", "human")
     elif brief.status != "approved":
@@ -151,7 +172,7 @@ def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None)
     screens = sorted((folder / "wireframes").glob("*.html")) if (folder / "wireframes").is_dir() else []
     if screens:
         st.notes.append(f"wireframes: {len(screens)} screen(s)")
-    elif spec.status == "approved" and not design.exists and st.phase != "shipped":
+    elif spec.status == "approved" and not design.exists and not st.phase.startswith("shipped"):
         st.next += f" (optional: `spec-workflow:wireframe {st.slug}`)"
 
     if st.lint_warnings and st.lint_errors == 0:
@@ -192,13 +213,14 @@ def product_status(root: Path, feature_slugs: list[str]) -> dict:
 def collect(root: Path, tests_dir: Path | None, only: str | None) -> tuple[dict, list[FeatureStatus]]:
     feats_dir = root / "features"
     forbidden = spec_lint.load_forbidden(feats_dir) if feats_dir.exists() else []
+    test_map = spec_lint.load_test_map(feats_dir) if feats_dir.exists() else {}
     folders = sorted(p for p in feats_dir.iterdir() if p.is_dir() and not p.name.startswith(".")) if feats_dir.exists() else []
     if only:
         folders = [p for p in folders if p.name == only]
         if not folders:
             print(f"error: feature '{only}' not found under {feats_dir}", file=sys.stderr)
             sys.exit(2)
-    feats = [feature_status(p, forbidden, tests_dir) for p in folders]
+    feats = [feature_status(p, forbidden, tests_dir, test_map.get(p.name)) for p in folders]
     all_slugs = [p.name for p in (sorted(feats_dir.iterdir()) if feats_dir.exists() else []) if p.is_dir() and not p.name.startswith(".")]
     return product_status(root, all_slugs), feats
 

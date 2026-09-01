@@ -31,7 +31,7 @@ Produces `docs/features/<slug>/tests.md` — the traceability matrix from scenar
    - vitest/jest: `it("T-01.1a [S-01.1] request accepted", ...)`.
    - Go: `func TestT01_1a_RequestAccepted(t *testing.T) { // S-01.1`.
 
-   The lint's `--tests-dir` scans for `S-NN.M` and `T-NN.Ma` patterns in test files, so any convention where the IDs appear literally works.
+   The lint's `--tests-dir` scans for `S-NN.M` and `T-NN.Ma` patterns in test files, so any convention where the IDs appear literally works. It only reads the files that belong to this feature — the slug has to appear in the path (`tests/<slug>/test_x.py`, `tests/test_<slug>.py`) or be mapped in `docs/features/.spec-lint.json` (`{"tests": {"<slug>": ["<glob>"]}}`), because every feature has an S-01.1 and a shared scan would let another feature's tests cover this one. Put the skeletons somewhere the slug is visible.
 
 ## Writing tests.md
 

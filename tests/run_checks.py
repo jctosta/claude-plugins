@@ -12,6 +12,10 @@ Checks:
 4. The review site's embedded JavaScript parses (node --check), it lists a
    feature's wireframes, and its backend round-trips a comment (including one
    on a wireframe screen) through feedback.md.
+5. Code markers are discovered per feature: two features sharing S-01.1 don't
+   satisfy each other's traceability, and .spec-lint.json can map files to a slug.
+6. A brief marked `shipped` is only accepted as terminal once the lint, the open
+   feedback, the mandatory artifacts and tests.md all back it up.
 Exits non-zero on the first failure.
 """
 from __future__ import annotations
@@ -154,6 +158,79 @@ with tempfile.TemporaryDirectory() as td:
               for i in parse_feedback(fb)))
     check("wireframes: comment resolves", set_status(fb, wf_item["id"], "resolved", "edited the screen")
           and any(i["id"] == wf_item["id"] and i["status"] == "resolved" for i in parse_feedback(fb)))
+
+print("5. markers are scoped per feature")
+with tempfile.TemporaryDirectory() as td:
+    feats = Path(td) / "docs/features"
+    for slug in ("feature-a", "feature-b"):
+        shutil.copytree(FEATURE, feats / slug)
+    ids = sorted(set(re.findall(r"\bS-\d{2}\.\d+\b", (FEATURE / "spec.md").read_text(encoding="utf-8"))))
+    ids += sorted(set(re.findall(r"\bT-\d{2}\.\d+[a-z]\b|\bT-X\d{2}[a-z]\b",
+                                 (FEATURE / "tests.md").read_text(encoding="utf-8"))))
+    tests_dir = Path(td) / "tests"
+    (tests_dir / "feature_a").mkdir(parents=True)
+    # every marker of both features, but in a file that belongs to feature-a only
+    (tests_dir / "feature_a" / "test_flows.py").write_text(
+        "\n".join(f"def test_{i.replace('-', '_').replace('.', '_')}():  # {i}\n    pass" for i in ids),
+        encoding="utf-8")
+
+    fa, fb = feats / "feature-a", feats / "feature-b"
+    forbidden = spec_lint.load_forbidden(feats)
+    check("scoping: only the slug's own files are read",
+          [p.name for p in spec_lint.feature_test_files(tests_dir, "feature-a")] == ["test_flows.py"]
+          and spec_lint.feature_test_files(tests_dir, "feature-b") == [])
+    code_a = [w for w in spec_lint.lint_feature(fa, tests_dir, forbidden).warnings if w.startswith("code")]
+    code_b = [w for w in spec_lint.lint_feature(fb, tests_dir, forbidden).warnings if w.startswith("code")]
+    check("scoping: a feature's own markers satisfy it", code_a == [], "; ".join(code_a))
+    check("scoping: they don't satisfy the other feature", len(code_b) > 0,
+          "feature-a's markers silenced feature-b")
+    check("scoping: spec_status counts markers per feature",
+          spec_status.feature_status(fa, forbidden, tests_dir).scenarios_in_code > 0
+          and spec_status.feature_status(fb, forbidden, tests_dir).scenarios_in_code == 0)
+
+    (feats / ".spec-lint.json").write_text(json.dumps({"tests": {"feature-b": ["feature_a/*.py"]}}), encoding="utf-8")
+    globs = spec_lint.load_test_map(feats).get("feature-b")
+    check("scoping: .spec-lint.json can map files to a slug",
+          [w for w in spec_lint.lint_feature(fb, tests_dir, forbidden, globs).warnings if w.startswith("code")] == [])
+
+print("6. shipped is verified, not trusted")
+with tempfile.TemporaryDirectory() as td:
+    base = Path(td) / "features"
+    forbidden = spec_lint.load_forbidden(base)
+
+    def shipped(name: str, edit=None) -> Path:
+        f = base / name
+        shutil.copytree(FEATURE, f)
+        b = f / "brief.md"
+        b.write_text(b.read_text(encoding="utf-8").replace("status: approved", "status: shipped", 1), encoding="utf-8")
+        if edit:
+            edit(f)
+        return f
+
+    def phase(f: Path) -> str:
+        return spec_status.feature_status(f, forbidden).phase
+
+    def break_spec(f: Path) -> None:
+        s = f / "spec.md"
+        s.write_text(s.read_text(encoding="utf-8").replace("- WHEN the subject submits another erasure request\n", "", 1),
+                     encoding="utf-8")
+
+    def green(f: Path) -> None:
+        tm = f / "tests.md"
+        tm.write_text(tm.read_text(encoding="utf-8").replace("status: skeletons-red", "status: green", 1), encoding="utf-8")
+
+    check("shipped: lint errors win", phase(shipped("with-lint-errors", break_spec)) == "blocked by lint",
+          phase(base / "with-lint-errors"))
+    check("shipped: open feedback wins",
+          phase(shipped("with-open-feedback", lambda f: append_feedback(
+              f / "feedback.md", "spec.md", "S-01.1", "quoted", "still open", "ci"))) == "in review")
+    check("shipped: missing artifacts are named",
+          phase(shipped("without-tests-md", lambda f: (f / "tests.md").unlink())) == "shipped — incomplete")
+    check("shipped: tests.md must be terminal",
+          phase(shipped("tests-not-green")) == "shipped — tests not green")
+    st = spec_status.feature_status(shipped("really-shipped", green), forbidden)
+    check("shipped: accepted when everything backs it up",
+          st.phase == "shipped" and st.next == "nothing — feature is shipped", f"{st.phase} / {st.next}")
 
 print()
 if failures:

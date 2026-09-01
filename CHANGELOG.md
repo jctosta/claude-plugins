@@ -7,6 +7,17 @@ want a `.skill` artifact for claude.ai.
 ## Unreleased
 
 ### spec-workflow
+- Fixed: `--tests-dir` marker discovery unioned every file under the tests
+  directory, so one feature's `S-01.1` satisfied another's traceability and a
+  feature with no tests at all could report clean. Both `spec_lint` and
+  `spec_status` now read only the files that belong to the feature — the slug in
+  the path, or a `{"tests": {"<slug>": ["<glob>"]}}` mapping in
+  `.spec-lint.json` for layouts that don't name paths after it.
+- Fixed: a brief set to `status: shipped` short-circuited the ladder before the
+  lint and open-feedback checks, so a feature with errors, missing artifacts and
+  unresolved comments reported as done. `shipped` is now evaluated after the
+  blocking conditions and only holds when the mandatory artifacts exist and
+  tests.md is green; otherwise the phase says which part is missing.
 - New optional `wireframe` phase between refine and design: hand-drawn-style
   screens in `docs/features/<slug>/wireframes/*.html` (wired-elements from a
   CDN, one shared grayscale stylesheet, no build step), covering the UI-bearing

@@ -138,4 +138,6 @@ python scripts/spec_lint.py docs/features/<slug> --matrix # print traceability m
 python scripts/spec_lint.py docs/features/<slug> --json   # machine output
 ```
 
-Errors fail the gate. Warnings must be either fixed or explicitly acknowledged in the review message with a reason. The forbidden-word list can be extended per project in `docs/features/.spec-lint.json` (`{"forbidden": ["..."]}`).
+Errors fail the gate. Warnings must be either fixed or explicitly acknowledged in the review message with a reason.
+
+`docs/features/.spec-lint.json` holds per-project settings: `{"forbidden": ["..."]}` extends the implementation-word list, and `{"tests": {"<slug>": ["<glob>"]}}` maps a feature to its test files. `--tests-dir` reads S-/T- markers only from files whose path names the slug (`tests/<slug>/`, `test_<slug>.py`, kebab or snake) or that a `tests` glob maps to it — IDs restart in every feature, so one feature's tests must never satisfy another's traceability. If nothing matches the slug the lint says so instead of reporting each ID separately.
