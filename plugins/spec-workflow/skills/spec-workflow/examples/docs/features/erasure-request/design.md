@@ -32,8 +32,8 @@ sequenceDiagram
     participant Outbox
     participant AuditLog
     Subject->>API: submit erasure request
-    API->>RequestService: create(subject)
-    RequestService->>Store: insert request (unique partial index on subject+type+open status)
+    API->>RequestService: register request for subject
+    RequestService->>Store: insert request (unique partial index on subject, type, open status)
     alt inserted
         Note over Store: status → PENDING, deadline = now + 15d
         RequestService->>Outbox: enqueue confirmation (request id, deadline)
@@ -56,7 +56,7 @@ sequenceDiagram
     participant Store
     Outbox->>Notifier: send confirmation
     Notifier-->>Outbox: error
-    Outbox->>Store: mark outbox row failed, attempts+1, next_attempt
+    Outbox->>Store: mark outbox row failed, increment attempts, set next_attempt
     Note over Store: request stays PENDING; failed row visible on DPO dashboard
 ```
 

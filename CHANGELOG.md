@@ -7,6 +7,12 @@ want a `.skill` artifact for claude.ai.
 ## Unreleased
 
 ### spec-workflow
+- Mermaid diagrams are validated by the lint with [maid](https://github.com/probelabs/maid)
+  when it is installed (`npm i -g @probelabs/maid`; `--mermaid npx` fetches it on
+  demand, `--mermaid off` skips). A diagram that doesn't parse is an error with
+  its file and line — previously it only surfaced as an error box on the review
+  site, after review. maid's own warnings are reported as info: it reads `+` and
+  `create(` inside a message label as syntax, which mermaid does not.
 - Artifact headers are now a two-column `| Field | Value |` table instead of a
   block of `key: value` lines, which Markdown collapsed into one run-on
   paragraph on the review site. Same for the `Actors / Preconditions /

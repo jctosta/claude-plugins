@@ -6,7 +6,7 @@
     python scripts/spec_status.py docs --tests-dir tests  # also look at code markers
     python scripts/spec_status.py docs --json
 
-The next step is derived from artifact presence, each artifact's `status:`
+The next step is derived from artifact presence, each artifact's `status`
 field, lint results and open feedback — deterministic, so the agent and the
 human see the same thing. Standard library only; imports spec_lint.py from
 the same directory.
@@ -90,14 +90,14 @@ def _scenarios_in_code(tests_dir: Path | None, sids: set[str], slug: str,
 
 
 def feature_status(folder: Path, forbidden: list, tests_dir: Path | None = None,
-                   tests_globs: list[str] | None = None) -> FeatureStatus:
+                   tests_globs: list[str] | None = None, maid: list[str] | None = None) -> FeatureStatus:
     st = FeatureStatus(folder.name)
     meta = {a: _fields(folder / a) for a in ARTIFACTS}
     st.rigor = (meta["brief.md"].get("rigor", "lite").split() or ["lite"])[0].lower()
     st.artifacts = [Artifact(a, (folder / a).exists(), meta[a].get("status", "")) for a in ARTIFACTS]
     st.open_feedback = _open_feedback(folder)
 
-    rep = spec_lint.lint_feature(folder, None, forbidden)
+    rep = spec_lint.lint_feature(folder, None, forbidden, None, maid)
     st.lint_errors, st.lint_warnings = len(rep.errors), len(rep.warnings)
     sids = {k.split()[0] for k in rep.matrix if k.startswith("S-")}
     st.scenarios = len(sids)
@@ -203,7 +203,8 @@ def product_status(root: Path, feature_slugs: list[str]) -> dict:
     return out
 
 
-def collect(root: Path, tests_dir: Path | None, only: str | None) -> tuple[dict, list[FeatureStatus]]:
+def collect(root: Path, tests_dir: Path | None, only: str | None,
+            maid: list[str] | None = None) -> tuple[dict, list[FeatureStatus]]:
     feats_dir = root / "features"
     forbidden = spec_lint.load_forbidden(feats_dir) if feats_dir.exists() else []
     test_map = spec_lint.load_test_map(feats_dir) if feats_dir.exists() else {}
@@ -213,7 +214,7 @@ def collect(root: Path, tests_dir: Path | None, only: str | None) -> tuple[dict,
         if not folders:
             print(f"error: feature '{only}' not found under {feats_dir}", file=sys.stderr)
             sys.exit(2)
-    feats = [feature_status(p, forbidden, tests_dir, test_map.get(p.name)) for p in folders]
+    feats = [feature_status(p, forbidden, tests_dir, test_map.get(p.name), maid) for p in folders]
     all_slugs = [p.name for p in (sorted(feats_dir.iterdir()) if feats_dir.exists() else []) if p.is_dir() and not p.name.startswith(".")]
     return product_status(root, all_slugs), feats
 
@@ -257,12 +258,14 @@ def main() -> int:
     ap.add_argument("--feature", help="only this slug (verbose)")
     ap.add_argument("--tests-dir", type=Path)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--mermaid", choices=("auto", "npx", "off"), default="auto",
+                    help="validate mermaid diagrams while linting (see spec_lint.py --mermaid)")
     args = ap.parse_args()
     root = Path(args.root)
     if not root.exists():
         print(f"error: {root} not found", file=sys.stderr)
         return 2
-    prod, feats = collect(root, args.tests_dir, args.feature)
+    prod, feats = collect(root, args.tests_dir, args.feature, spec_lint.maid_command(args.mermaid))
     if args.json:
         print(json.dumps({"product": prod, "features": [asdict(f) for f in feats]}, indent=2))
     else:

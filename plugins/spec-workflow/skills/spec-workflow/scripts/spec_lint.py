@@ -15,7 +15,9 @@ in review. Per-project settings live in docs/features/.spec-lint.json:
 the test files that belong to it, for layouts that don't name paths after the
 slug — see feature_test_files().
 
-Only the standard library is used on purpose: the script must run anywhere.
+Mermaid diagrams are validated with maid (@probelabs/maid) when it is installed;
+without it every other check still runs. Only the standard library is used on
+purpose: the script must run anywhere.
 """
 from __future__ import annotations
 
@@ -23,6 +25,8 @@ import argparse
 import fnmatch
 import json
 import re
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -70,6 +74,9 @@ DEFAULT_FORBIDDEN = [
 ]
 
 CODE_EXTS = {".py", ".ts", ".tsx", ".js", ".mjs", ".go", ".rs", ".rb", ".java", ".kt", ".cs"}
+
+MERMAID_FENCE_RE = re.compile(r"^```mermaid\b", re.M)
+MAID_PKG = "@probelabs/maid"
 
 # --- model ------------------------------------------------------------------
 
@@ -474,6 +481,52 @@ def lint_wireframes(folder: Path, rep: Report, reqs: list[Requirement]) -> None:
                      f"'<!-- no-ui: {sid} reason -->'")
 
 
+# --- mermaid ----------------------------------------------------------------
+
+
+def maid_command(mode: str = "auto") -> list[str] | None:
+    """How to invoke maid (the mermaid validator).
+
+    auto: use it if it is installed (PATH, or the project's node_modules)
+    npx:  fetch it on demand — for CI, where a download is expected
+    off:  don't validate
+
+    None means "wanted but not available", so the lint can say how to install it;
+    an empty list means validation was switched off, which needs no explanation.
+    """
+    if mode == "off":
+        return []
+    if mode == "npx":
+        return ["npx", "-y", MAID_PKG]
+    exe = shutil.which("maid")
+    if exe:
+        return [exe]
+    local = Path("node_modules/.bin/maid")
+    return [str(local)] if local.exists() else None
+
+
+def lint_mermaid(path: Path, rep: Report, cmd: list[str]) -> None:
+    """Validate the ```mermaid fences in one file with maid.
+
+    Its errors are real parse failures — mermaid rejects the same diagrams — so
+    they block. Its warnings are stylistic and currently misread `+` or `create(`
+    inside a message label, so they are reported as info and never fail a gate.
+    """
+    f = path.name
+    try:
+        proc = subprocess.run([*cmd, "--format", "json", str(path)],
+                              capture_output=True, text=True, timeout=60)
+        data = json.loads(proc.stdout or "{}")
+    except (OSError, ValueError, subprocess.SubprocessError) as e:
+        rep.info.append(f"{f}: mermaid not validated ({e.__class__.__name__}: {e})")
+        return
+    for err in data.get("errors", []):
+        hint = f" — {err['hint']}" if err.get("hint") else ""
+        rep.err(f, err.get("line"), f"mermaid {err.get('code', '?')}: {err.get('message', 'invalid diagram')}{hint}")
+    for w in data.get("warnings", []):
+        rep.info.append(f"{f}:{w.get('line')}: mermaid {w.get('code')}: {w.get('message')}")
+
+
 # --- code markers -----------------------------------------------------------
 
 
@@ -577,7 +630,7 @@ def load_test_map(features_root: Path) -> dict[str, list[str]]:
 
 
 def lint_feature(folder: Path, tests_dir: Path | None, forbidden: list[re.Pattern],
-                 tests_globs: list[str] | None = None) -> Report:
+                 tests_globs: list[str] | None = None, maid: list[str] | None = None) -> Report:
     rep = Report(folder.name)
     brief, spec, design, tests = (folder / n for n in ("brief.md", "spec.md", "design.md", "tests.md"))
     meta: dict[str, str] = {}
@@ -605,6 +658,12 @@ def lint_feature(folder: Path, tests_dir: Path | None, forbidden: list[re.Patter
             rows = lint_tests(tests, rep, reqs, xcuts)
     else:
         rep.info.append("tests.md: not written yet")
+    with_mermaid = [p for p in (brief, spec, design, tests)
+                    if p.exists() and MERMAID_FENCE_RE.search(p.read_text(encoding="utf-8"))]
+    if with_mermaid and maid is None:  # [] means --mermaid off, which needs no hint
+        rep.info.append(f"mermaid: not validated — `npm i -g {MAID_PKG}`, or pass --mermaid npx")
+    for path in with_mermaid if maid else []:
+        lint_mermaid(path, rep, maid)
     for name, path in (("brief.md", brief), ("spec.md", spec), ("design.md", design), ("tests.md", tests)):
         if path.exists() and legacy_header(path.read_text(encoding="utf-8")):
             rep.info.append(f"{name}: header is the old `key: value` block — the two-column table "
@@ -646,6 +705,9 @@ def main() -> int:
     ap.add_argument("--tests-dir", type=Path, help="scan this directory for S-/T- markers in test code")
     ap.add_argument("--matrix", action="store_true", help="print scenario → test traceability matrix")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--mermaid", choices=("auto", "npx", "off"), default="auto",
+                    help=f"validate ```mermaid fences with {MAID_PKG}: auto (if installed), "
+                         "npx (fetch on demand), off")
     args = ap.parse_args()
 
     root = Path(args.path)
@@ -661,7 +723,8 @@ def main() -> int:
     forbidden = load_forbidden(features_root)
     test_map = load_test_map(features_root)
 
-    reports = [lint_feature(f, args.tests_dir, forbidden, test_map.get(f.name)) for f in features]
+    maid = maid_command(args.mermaid)
+    reports = [lint_feature(f, args.tests_dir, forbidden, test_map.get(f.name), maid) for f in features]
     total_err = sum(len(r.errors) for r in reports)
 
     if args.json:

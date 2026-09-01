@@ -44,6 +44,7 @@ Mandatory for rigor full. For lite, run it when a scenario involves more than on
 - [ ] Risks cover partial failure and rollback.
 - [ ] Test hooks cover every exception flow in spec.md (how to trigger it under test).
 - [ ] No behavior appears here that isn't in spec.md — if you discovered one, it's a spec change: stop and say so.
+- [ ] Every diagram parses: `python scripts/spec_lint.py docs/features/<slug>` reports no `mermaid` errors. If the lint says mermaid wasn't validated, run `npx -y @probelabs/maid docs/features/<slug>/design.md` before claiming the gate — a diagram that doesn't parse renders as an error box on the review site.
 - [ ] `python scripts/spec_lint.py docs/features/<slug>` reports no errors.
 
 Then stop. In the review message: components (new vs existing), contracts changed, decisions, and any spec gaps discovered. Ask for approval before test-spec.
