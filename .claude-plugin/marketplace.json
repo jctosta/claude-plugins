@@ -12,6 +12,13 @@
       "description": "Spec-first development workflow: define-app, explore, refine, design, test-spec, feedback, status — artifacts validated before code, with traceability lint and a local review site",
       "category": "workflow",
       "tags": ["spec", "requirements", "testing", "workflow"]
+    },
+    {
+      "name": "quality-gate",
+      "source": "./plugins/quality-gate",
+      "description": "Guided qlty setup: assess a project, decide which checks and thresholds actually matter, then enforce them as a quality gate in CI, git hooks and agent instructions — with the reasoning committed alongside the config",
+      "category": "development",
+      "tags": ["quality", "linting", "qlty", "static-analysis", "ci"]
     }
   ]
 }

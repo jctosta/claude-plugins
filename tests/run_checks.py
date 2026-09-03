@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CI checks for the spec-workflow plugin.
+"""CI checks for the plugins in this marketplace.
 
 Run from the repository root:  python tests/run_checks.py
 
@@ -22,6 +22,9 @@ Checks:
    feedback, the mandatory artifacts and tests.md all back it up.
 9. Every plugin.json and SKILL.md conforms to the closed Agent Plugins 1.0.0
    schemas, so an Agent Plugins client (Oh My Pi) can't silently drop the skill.
+10. quality-gate's advisor profiles fixture repositories correctly, its verify
+   catches a qlty.toml that is invalid or inconsistent with the repo, and the
+   templates it ships stay parseable and complete.
 Exits non-zero on the first failure.
 """
 from __future__ import annotations
@@ -477,6 +480,172 @@ with tempfile.TemporaryDirectory() as td:
            skill_violations(good_skill.replace("name: spec-workflow", "name: spec-flow", 1)))
     caught("skill: an uppercase name is rejected",
            skill_violations(good_skill.replace("name: spec-workflow", "name: Spec-Workflow", 1)))
+
+print("10. quality-gate profiles a repo and catches a bad qlty.toml")
+QG_SKILL = REPO / "plugins/quality-gate/skills/quality-gate"
+sys.path.insert(0, str(QG_SKILL / "scripts"))
+import qlty_advisor  # noqa: E402
+
+
+def tree(root: Path, files: dict[str, str]) -> Path:
+    for name, body in files.items():
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    return root
+
+
+def named(entries: list, key: str) -> set[str]:
+    return {str(entry[key]) for entry in entries}
+
+
+def messages(findings: list, severity: str) -> list[str]:
+    return [f.message for f in findings if f.severity == severity]
+
+
+PY_PROJECT = {
+    "pyproject.toml": "[tool.ruff]\nline-length = 100\n\n[tool.pytest.ini_options]\ntestpaths = ['tests']\n",
+    "src/app.py": "def handle(request):\n    return request\n",
+    "tests/test_app.py": "def test_handle():\n    assert True\n",
+    ".github/workflows/ci.yml": "name: ci\non: [push]\n",
+}
+
+with tempfile.TemporaryDirectory() as tmp:
+    base = Path(tmp)
+
+    found = qlty_advisor.detect(tree(base / "python-ruff", PY_PROJECT))
+    check("detect: finds the language", "Python" in named(found.languages, "name"))
+    check("detect: finds a tool configured in pyproject.toml",
+          "ruff" in named(found.tools, "tool"), sorted(named(found.tools, "tool")))
+    check("detect: maps the tool to its qlty plugin",
+          any(t["tool"] == "ruff" and t["qlty_plugin"] == "ruff" for t in found.tools))
+    check("detect: finds the test directory", "tests" in (found.tests.get("dirs") or []))
+    check("detect: finds the CI provider", found.ci == ["github-actions"], str(found.ci))
+    check("detect: reports no qlty config when there is none", found.qlty["configured"] is False)
+
+    found = qlty_advisor.detect(tree(base / "js-monorepo", {
+        "package.json": json.dumps({
+            "workspaces": ["apps/*", "packages/*"],
+            "devDependencies": {"eslint": "^9", "prettier": "^3", "husky": "^9"},
+        }),
+        "apps/web/package.json": '{"name": "web"}',
+        "apps/web/src/index.ts": "export const x = 1;\n",
+        "packages/ui/package.json": '{"name": "ui"}',
+        "packages/ui/src/button.tsx": "export const Button = () => null;\n",
+        ".husky/pre-commit": "npx lint-staged\n",
+    }))
+    check("detect: reads devDependencies as configured tools",
+          {"eslint", "prettier", "husky"} <= named(found.tools, "tool"), sorted(named(found.tools, "tool")))
+    check("detect: finds monorepo sub-projects",
+          {"apps/web", "packages/ui"} <= set(found.workspaces), str(found.workspaces))
+    check("detect: finds an existing hook runner",
+          "husky" in found.hook_runners, str(found.hook_runners))
+
+    found = qlty_advisor.detect(tree(base / "go-project", {
+        "go.mod": "module example.com/app\n",
+        "main.go": "package main\n\nfunc main() {}\n",
+        ".golangci.yml": "linters:\n  enable: [govet]\n",
+    }))
+    check("detect: finds Go and its linter config",
+          "Go" in named(found.languages, "name") and "golangci-lint" in named(found.tools, "tool"))
+
+    found = qlty_advisor.detect(tree(base / "already-configured", {
+        "src/app.py": "x = 1\n",
+        ".qlty/qlty.toml": 'config_version = "0"\n\n[[source]]\nname = "default"\ndefault = true\n\n[[plugin]]\nname = "ruff"\n',
+    }))
+    check("detect: reads an existing qlty config",
+          found.qlty["configured"] is True and found.qlty["plugins"] == ["ruff"], str(found.qlty))
+
+    # --- verify -----------------------------------------------------------
+
+    GOOD = (
+        'config_version = "0"\n'
+        'exclude_patterns = ["**/node_modules/**"]\n'
+        'test_patterns = ["**/tests/**"]\n\n'
+        '[[source]]\nname = "default"\ndefault = true\n\n'
+        '[[plugin]]\nname = "ruff"\nconfig_files = ["pyproject.toml"]\n'
+    )
+
+    def verify_with(label: str, config: str | None) -> list:
+        root = base / f"verify-{label}"
+        if not root.exists():
+            tree(root, PY_PROJECT)
+        if config is not None:
+            (root / ".qlty").mkdir(parents=True, exist_ok=True)
+            (root / ".qlty/qlty.toml").write_text(config, encoding="utf-8")
+        return qlty_advisor.verify(root)
+
+    check("verify: a config that matches the repo is clean",
+          messages(verify_with("good", GOOD), "error") == []
+          and messages(verify_with("good", GOOD), "warning") == [],
+          str(verify_with("good", GOOD)))
+
+    def caught_by_verify(label: str, config: str, severity: str = "error") -> None:
+        found = messages(verify_with(label, config), severity)
+        check(f"verify: {label}", bool(found), f"no {severity} reported")
+
+    caught_by_verify("a missing config is an error", None)
+    caught_by_verify("unparseable TOML is an error", 'config_version = "0"\n[[plugin\n')
+    caught_by_verify("a missing config_version is an error", GOOD.replace('config_version = "0"\n', ""))
+    caught_by_verify("a wrong config_version is an error", GOOD.replace('"0"', '"1"'))
+    caught_by_verify("a missing [[source]] is an error",
+                     GOOD.replace('[[source]]\nname = "default"\ndefault = true\n', ""))
+    caught_by_verify("a plugin with no name is an error", GOOD + '\n[[plugin]]\nversion = "1.0"\n')
+    caught_by_verify("an invalid plugin mode is an error", GOOD + '\n[[plugin]]\nname = "bandit"\nmode = "warn"\n')
+    caught_by_verify("an invalid smell threshold is an error",
+                     GOOD + '\n[smells.function_complexity]\nthreshold = -1\n')
+    caught_by_verify("an invalid triage level is an error",
+                     GOOD + '\n[[triage]]\nmatch.plugins = ["ruff"]\nset.level = "critical"\n')
+    caught_by_verify("a plugin for an absent language is a warning",
+                     GOOD + '\n[[plugin]]\nname = "rubocop"\n', "warning")
+    caught_by_verify("a plugin shadowing the repo's own config is a warning",
+                     GOOD.replace('\nconfig_files = ["pyproject.toml"]', ""), "warning")
+    caught_by_verify("an unknown smell is a warning",
+                     GOOD + '\n[smells.long_names]\nthreshold = 4\n', "warning")
+    caught_by_verify("an unexplained suppression is a warning",
+                     GOOD + '\n[[triage]]\nmatch.plugins = ["ruff"]\nset.ignored = true\n', "warning")
+
+    explained = GOOD + '\n# Fixtures hold malformed payloads on purpose.\n[[triage]]\nmatch.plugins = ["ruff"]\nset.ignored = true\n'
+    check("verify: a suppression with a stated reason passes",
+          messages(verify_with("explained", explained), "warning") == [],
+          str(messages(verify_with("explained", explained), "warning")))
+
+    # --- shipped templates ------------------------------------------------
+
+    templates = QG_SKILL / "assets/templates"
+    template_toml = (templates / "qlty.toml").read_text(encoding="utf-8")
+    check("template: qlty.toml parses",
+          qlty_advisor.load_toml(template_toml) is not None)
+    check("template: qlty.toml verifies against a real repo",
+          messages(verify_with("template", template_toml), "error") == [],
+          str(messages(verify_with("template", template_toml), "error")))
+
+workflow = (QG_SKILL / "assets/templates/quality-gate.yml").read_text(encoding="utf-8")
+check("template: the CI workflow has a trigger, jobs and the gate command",
+      "\non:" in workflow and "\njobs:" in workflow and "qlty check --upstream" in workflow)
+check("template: the CI workflow checks out full history for --upstream",
+      "fetch-depth: 0" in workflow)
+workflow_steps = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
+check("template: the CI workflow never swallows the exit code",
+      "|| true" not in workflow_steps and "continue-on-error" not in workflow_steps)
+
+snippet = (QG_SKILL / "assets/templates/agents-snippet.md").read_text(encoding="utf-8")
+check("template: the agent snippet carries qlty's own agent commands",
+      "qlty fmt" in snippet and "qlty check --fix --level=low" in snippet)
+
+policy = (QG_SKILL / "assets/templates/policy.md").read_text(encoding="utf-8")
+check("template: the policy has a section per phase",
+      all(heading in policy for heading in
+          ("## Project profile", "## Policy", "## Baseline", "## Enforcement")))
+
+for phase in ("assess", "propose", "apply", "baseline", "enforce", "status"):
+    reference = QG_SKILL / f"references/{phase}.md"
+    command = REPO / f"plugins/quality-gate/commands/{phase}.md"
+    check(f"phase {phase}: has a reference and a command",
+          reference.exists() and command.exists())
+    if reference.exists():
+        check(f"phase {phase}: its reference ends with a gate",
+              "## Gate" in reference.read_text(encoding="utf-8"))
 
 print()
 if failures:

@@ -1,0 +1,74 @@
+# .github/workflows/quality-gate.yml
+#
+# Two jobs, deliberately:
+#   gate   - runs on pull requests over changed files only, and blocks
+#   full   - runs on main and nightly over everything, and reports
+#
+# Adapt the commands to the ones in docs/quality/policy.md. They must match the
+# policy string exactly, so that CI and a developer's terminal agree.
+
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * *"
+
+jobs:
+  gate:
+    name: quality gate
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # --upstream needs a merge base; a shallow clone has none.
+          fetch-depth: 0
+
+      # Without this every run re-downloads every tool qlty drives.
+      - name: Cache the qlty toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.qlty
+          key: qlty-${{ runner.os }}-${{ hashFiles('.qlty/qlty.toml') }}
+          restore-keys: qlty-${{ runner.os }}-
+
+      - name: Install qlty
+        run: |
+          curl https://qlty.sh | sh
+          echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
+
+      # The gate. No `|| true` — the exit code is the whole point.
+      - name: Check changed files
+        run: qlty check --upstream origin/${{ github.base_ref }} --fail-level=medium
+
+  full:
+    name: full scan
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache the qlty toolchain
+        uses: actions/cache@v4
+        with:
+          path: ~/.qlty
+          key: qlty-${{ runner.os }}-${{ hashFiles('.qlty/qlty.toml') }}
+          restore-keys: qlty-${{ runner.os }}-
+
+      - name: Install qlty
+        run: |
+          curl https://qlty.sh | sh
+          echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
+
+      # Reports the whole picture without blocking. This is the number the
+      # Baseline section in docs/quality/policy.md is compared against.
+      - name: Scan everything
+        run: |
+          qlty check --all --no-fail --summary
+          qlty smells --all --quiet
+          qlty metrics --all --sort complexity --limit 20 --exclude-tests

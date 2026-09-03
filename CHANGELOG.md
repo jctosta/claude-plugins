@@ -6,6 +6,49 @@ want a `.skill` artifact for claude.ai.
 
 ## Unreleased
 
+### quality-gate
+
+- New plugin. Sets up [qlty](https://qlty.sh) as a working quality gate — the open-source
+  half of what SonarQube used to provide — through six reviewable phases: `assess`,
+  `propose`, `apply`, `baseline`, `enforce`, `status`.
+  The gap it fills is not `qlty init`, which already exists and takes ten seconds. What
+  that produces is derived from file extensions: every detectable linter on, every
+  threshold at stock, no opinion about any of it. On a codebase with history that lands
+  as hundreds of findings nobody triages and a gate everyone learns to route around.
+  The judgment calls are the work — which of the 70+ plugins earn their noise here, how
+  qlty adopts the linters the repo already configures instead of fighting them, which
+  smells and thresholds are relevant to this code, and what blocks a merge versus what
+  merely reports. So the output is not just `.qlty/qlty.toml` but `docs/quality/policy.md`,
+  which says what the gate enforces and why, and is the thing `status` re-reads later.
+- Two reference files carry the advice the phases apply. `choosing-checks.md` orders
+  checks into four tiers by value per unit of noise (formatters, security scanners,
+  correctness linters, maintainability smells), gives each qlty smell its default and the
+  case for moving it, and is explicit about what not to gate on — raw LOC, total issue
+  count on a legacy repo, an absolute coverage percentage. `plugin-catalog.md` is the
+  per-stack lookup table, including the pairs that should never both be enabled
+  (`biome` with `prettier` + `eslint`, `ruff` with `flake8`, `rubocop` with `standardrb`).
+- Clean-as-you-code is the default posture: gate changed files against the merge base,
+  leave existing debt visible but non-blocking. Full `--all` enforcement is offered as an
+  explicit upgrade once the diff gate is holding, not as the starting point — a gate that
+  is red the day it is switched on teaches the team to ignore it, and that lesson is hard
+  to unteach.
+- Enforcement covers the three surfaces qlty itself recommends: a blocking CI job, git
+  hooks (integrating with an existing `pre-commit`/husky/lefthook setup rather than
+  overwriting `.git/hooks/`), and a block appended to `AGENTS.md`/`CLAUDE.md`. qlty ships
+  no MCP server by design — its documented agent integration is the shell command plus the
+  exit code — so that block is the whole wiring.
+- `scripts/qlty_advisor.py` (standard library only, like the spec-workflow scripts) backs
+  two phases. `detect` profiles a repo: languages by file and line count, tools declared in
+  `pyproject.toml`/`package.json`/dotfiles, test layout, CI provider, hook runner, monorepo
+  sub-projects. `verify` reads an existing `qlty.toml` and reports what is valid but wrong
+  here — a plugin enabled for a language that isn't present, a linter the repo already
+  configures being shadowed instead of adopted, patterns matching nothing, and a `[[triage]]`
+  block that silences issues with no comment saying why. That last one exists because an
+  unexplained suppression is indistinguishable from hiding a problem.
+- `tests/run_checks.py` gained a section 10 covering all of the above against fixture
+  repositories, plus the four shipped templates. Twelve deliberate breakages confirm the
+  checks bite.
+
 ### spec-workflow
 - The plugin now installs under [Oh My Pi](https://github.com/can1357/oh-my-pi) as well as
   Claude Code. It already loaded there through omp's Claude-compatibility fallback; what's
