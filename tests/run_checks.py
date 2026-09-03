@@ -12,11 +12,13 @@ Checks:
 4. The review site's embedded JavaScript parses (node --check), it lists a
    feature's wireframes, and its backend round-trips a comment (including one
    on a wireframe screen) through feedback.md.
-5. Document headers are two-column tables that parse, escaped pipes included,
+5. Mermaid diagrams in the example are valid, and a malformed one is reported
+   as an error with its line (skipped when @probelabs/maid isn't installed).
+6. Document headers are two-column tables that parse, escaped pipes included,
    with the legacy `key: value` block still readable.
-6. Code markers are discovered per feature: two features sharing S-01.1 don't
+7. Code markers are discovered per feature: two features sharing S-01.1 don't
    satisfy each other's traceability, and .spec-lint.json can map files to a slug.
-7. A brief marked `shipped` is only accepted as terminal once the lint, the open
+8. A brief marked `shipped` is only accepted as terminal once the lint, the open
    feedback, the mandatory artifacts and tests.md all back it up.
 Exits non-zero on the first failure.
 """
@@ -60,6 +62,11 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 def run_lint(path: Path) -> spec_lint.Report:
     forbidden = spec_lint.load_forbidden(path.parent)
     return spec_lint.lint_feature(path, None, forbidden)
+
+
+def run_lint_maid(path: Path) -> spec_lint.Report:
+    forbidden = spec_lint.load_forbidden(path.parent)
+    return spec_lint.lint_feature(path, None, forbidden, None, spec_lint.maid_command("auto"))
 
 
 print("1. worked example is clean")
@@ -161,7 +168,30 @@ with tempfile.TemporaryDirectory() as td:
     check("wireframes: comment resolves", set_status(fb, wf_item["id"], "resolved", "edited the screen")
           and any(i["id"] == wf_item["id"] and i["status"] == "resolved" for i in parse_feedback(fb)))
 
-print("5. document headers are tables")
+print("5. mermaid diagrams are validated")
+maid = spec_lint.maid_command("auto")
+if not maid:
+    print("  skip mermaid checks (maid not installed: npm i -g @probelabs/maid)")
+else:
+    check("mermaid: the example's diagrams are valid",
+          not [e for e in run_lint_maid(FEATURE).errors if "mermaid" in e],
+          "; ".join(e for e in run_lint_maid(FEATURE).errors if "mermaid" in e))
+    check("mermaid: the example raises no maid warnings either",
+          not [i for i in run_lint_maid(FEATURE).info if "mermaid " in i],
+          "; ".join(i for i in run_lint_maid(FEATURE).info if "mermaid " in i))
+    with tempfile.TemporaryDirectory() as td:
+        broken = Path(td) / "features" / "broken"
+        shutil.copytree(FEATURE, broken)
+        d = broken / "design.md"
+        d.write_text(d.read_text(encoding="utf-8").replace(
+            "    Subject->>API: submit erasure request", "    Subject->>API submit erasure request", 1),
+            encoding="utf-8")
+        errs = [e for e in run_lint_maid(broken).errors if "mermaid" in e]
+        check("mermaid: a malformed diagram is an error", len(errs) == 1, f"{len(errs)} error(s)")
+        check("mermaid: the error carries file and line", errs and errs[0].startswith("design.md:34:"),
+              errs[0] if errs else "none")
+
+print("6. document headers are tables")
 HEADERED = ["product/product.md", "product/domain.md"] + [
     f"features/erasure-request/{n}" for n in ("brief.md", "spec.md", "design.md", "tests.md")]
 for rel in HEADERED:
@@ -181,7 +211,7 @@ check("header: the legacy key: value block still parses",
       spec_lint.parse_fields("# T\n\nslug: legacy\nstatus: approved\n")
       == {"slug": "legacy", "status": "approved"})
 
-print("6. markers are scoped per feature")
+print("7. markers are scoped per feature")
 with tempfile.TemporaryDirectory() as td:
     feats = Path(td) / "docs/features"
     for slug in ("feature-a", "feature-b"):
@@ -215,7 +245,7 @@ with tempfile.TemporaryDirectory() as td:
     check("scoping: .spec-lint.json can map files to a slug",
           [w for w in spec_lint.lint_feature(fb, tests_dir, forbidden, globs).warnings if w.startswith("code")] == [])
 
-print("7. shipped is verified, not trusted")
+print("8. shipped is verified, not trusted")
 with tempfile.TemporaryDirectory() as td:
     base = Path(td) / "features"
     forbidden = spec_lint.load_forbidden(base)

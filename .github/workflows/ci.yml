@@ -16,7 +16,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Run plugin checks (lint fixtures, status, review site)
+      - name: Install the mermaid validator
+        run: npm install -g @probelabs/maid
+      - name: Run plugin checks (lint fixtures, status, review site, mermaid)
         run: python tests/run_checks.py
 
   validate-manifests:

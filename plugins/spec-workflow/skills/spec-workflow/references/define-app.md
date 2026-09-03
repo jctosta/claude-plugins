@@ -52,6 +52,7 @@ Report each item as pass/fail:
 - [ ] Every capability in the capability map has at least one roadmap feature (or is marked `(existing)` for brownfield).
 - [ ] Every noun used in the roadmap feature titles is defined in the glossary.
 - [ ] Every entity with a status has a lifecycle diagram, and lifecycle state names are UPPER_SNAKE.
+- [ ] The diagrams in domain.md parse: `npx -y @probelabs/maid docs/product/domain.md` (spec_lint only covers feature folders).
 - [ ] Non-goals has at least one entry that was an explicit rejection, with reason.
 - [ ] No section was deleted from either template; empty sections say `None — <why>`.
 - [ ] Assumptions the user didn't confirm are marked `(assumed)` inline.

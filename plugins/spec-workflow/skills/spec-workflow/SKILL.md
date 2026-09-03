@@ -142,4 +142,6 @@ python scripts/spec_lint.py docs/features/<slug> --json   # machine output
 
 Errors fail the gate. Warnings must be either fixed or explicitly acknowledged in the review message with a reason.
 
+Mermaid diagrams are validated with [maid](https://github.com/probelabs/maid) when it's installed (`npm i -g @probelabs/maid`) — `--mermaid npx` fetches it on demand, `--mermaid off` skips it. A diagram that doesn't parse is a lint **error**, since it renders as an error box on the review site. maid's own warnings are reported as info and never block: it reads `+` and `create(` inside a message label as syntax, which mermaid doesn't. Files outside a feature folder (`docs/product/domain.md`) aren't linted — check those with `npx -y @probelabs/maid docs/product/domain.md`.
+
 `docs/features/.spec-lint.json` holds per-project settings: `{"forbidden": ["..."]}` extends the implementation-word list, and `{"tests": {"<slug>": ["<glob>"]}}` maps a feature to its test files. `--tests-dir` reads S-/T- markers only from files whose path names the slug (`tests/<slug>/`, `test_<slug>.py`, kebab or snake) or that a `tests` glob maps to it — IDs restart in every feature, so one feature's tests must never satisfy another's traceability. If nothing matches the slug the lint says so instead of reporting each ID separately.
