@@ -7,12 +7,14 @@ Currently shipping:
 | Plugin | What it does |
 |---|---|
 | `spec-workflow` | Spec-first development workflow: define the product, explore → refine → (wireframe) → design → test-spec each feature, validate spec and tests *before* code, with a traceability lint, a local review site with comment-driven feedback, and handoff to Backlog.md tasks. |
+| `quality-gate` | Guided [qlty](https://qlty.sh) setup: profile the project, decide which checks and thresholds actually earn their noise, apply a tailored `.qlty/qlty.toml`, baseline existing debt without a flag-day cleanup, then enforce the gate in CI, git hooks and agent instructions — with the reasoning committed as `docs/quality/policy.md`. |
 
 ## Install (Claude Code)
 
 ```shell
 /plugin marketplace add jctosta/plugins
 /plugin install spec-workflow@jctosta-plugins
+/plugin install quality-gate@jctosta-plugins
 ```
 
 Then either invoke the phase commands directly:
@@ -31,16 +33,27 @@ Then either invoke the phase commands directly:
 /spec-workflow:site
 ```
 
-…or just talk ("spec this out", "where are we", "apply the review comments") — the skill routes by intent too.
+```shell
+/quality-gate:status
+/quality-gate:assess
+/quality-gate:propose
+/quality-gate:apply
+/quality-gate:baseline
+/quality-gate:enforce
+```
+
+…or just talk ("spec this out", "where are we", "apply the review comments", "set up a quality gate",
+"what should we actually lint") — the skills route by intent too.
 
 ## Install (Oh My Pi)
 
 ```shell
 omp plugin marketplace add jctosta/plugins
 omp plugin install spec-workflow@jctosta-plugins
+omp plugin install quality-gate@jctosta-plugins
 ```
 
-Same commands (`/spec-workflow:explore …`), same skill. If you already installed the plugin through
+Same commands (`/spec-workflow:explore …`), same skills. If you already installed the plugin through
 Claude Code, omp reads `~/.claude/plugins/installed_plugins.json` too and picks it up with no second install.
 
 Each plugin ships a root `plugin.json` declaring [Agent Plugins 1.0.0](https://agent-plugins.org), so omp
@@ -85,6 +98,15 @@ plugins/
       assets/templates/              # artifact templates
       scripts/                       # spec_lint.py, spec_status.py, spec_site.py
       examples/                      # worked example that CI keeps honest
+  quality-gate/
+    plugin.json                      # same manifest pair as above
+    .claude-plugin/plugin.json
+    commands/                        # thin /quality-gate:<phase> wrappers
+    skills/quality-gate/
+      SKILL.md                       # router + shared conventions
+      references/                    # one per phase, plus choosing-checks.md and plugin-catalog.md
+      assets/templates/              # policy.md, qlty.toml, quality-gate.yml, agents-snippet.md
+      scripts/                       # qlty_advisor.py
 tests/run_checks.py                  # CI entry point
 .github/workflows/ci.yml             # checks on every push/PR
 .github/workflows/release.yml        # .skill artifacts on tags
@@ -103,6 +125,7 @@ tests/run_checks.py                  # CI entry point
 7. Code markers stay scoped per feature: two features sharing `S-01.1` don't satisfy each other, and `.spec-lint.json` can map test files to a slug.
 8. A brief marked `shipped` only reads as terminal once the lint, the open feedback, the mandatory artifacts and `tests.md` back it up.
 9. Every `plugin.json` and `SKILL.md` conforms to the closed Agent Plugins 1.0.0 schemas, and the two manifests agree. Both schemas reject silently at runtime — an unexpected `SKILL.md` frontmatter key or a description past 1024 characters just drops the skill — so eight deliberately broken copies check that the validator actually bites.
+10. `quality-gate`'s advisor profiles fixture repositories correctly (languages, tools declared in `pyproject.toml` and `package.json`, monorepo sub-projects, hook runners, CI provider), and its `verify` catches a `qlty.toml` that is malformed or inconsistent with the repo it sits in — a plugin enabled for a language that isn't there, a linter the repo already configures being shadowed, a suppression with no stated reason, and a `[smells.*]` key qlty will silently drop — the trap where a check you believe you disabled is still running and `qlty config validate` still exits 0. The four templates it ships stay parseable and complete, and the CI template names the plugins allowed to fail the build.
 
 A second job runs `claude plugin validate .` for manifest/frontmatter schema errors.
 
@@ -118,6 +141,8 @@ A second job runs `claude plugin validate .` for manifest/frontmatter schema err
 5. If it has checkable invariants, extend `tests/run_checks.py`.
 6. `claude plugin validate .`, then test locally: `/plugin marketplace add ./path/to/this/repo` and `/plugin install <name>@jctosta-plugins`.
 
-## Working on the spec-workflow skill itself
+## Working on the skills themselves
 
-The skill is self-hosting in spirit: edit an artifact convention → update the matching template, phase reference, lint rule and the worked example together, and keep the example at 0/0. `python tests/run_checks.py` before pushing tells you if the four drifted apart.
+**spec-workflow** is self-hosting in spirit: edit an artifact convention → update the matching template, phase reference, lint rule and the worked example together, and keep the example at 0/0. `python tests/run_checks.py` before pushing tells you if the four drifted apart.
+
+**quality-gate** has one external dependency to keep honest — qlty itself. `references/plugin-catalog.md` is a snapshot of `qlty plugins list` and drifts as qlty adds plugins; it carries a "verify against the CLI" note for that reason. Thresholds quoted in `references/choosing-checks.md` and `assets/templates/qlty.toml` are qlty's shipped defaults, so re-check them after a qlty release. The advisor script stays standard-library-only, like the spec-workflow scripts.
