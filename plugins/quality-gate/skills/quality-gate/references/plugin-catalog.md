@@ -58,6 +58,7 @@ Recommendations mean:
 | `flake8` | linter | Classic linting | off if `ruff` is on; they overlap heavily |
 | `mypy` | type-checker | Type errors | consider — on a codebase with no annotations this is a project, not a check. Start `monitor`. |
 | `bandit` | security | Injection, unsafe deserialization, weak crypto | **on** |
+| `pyright` / `basedpyright` | type-checker | Type errors | **not a qlty plugin** — qlty ships neither. If the repo configures one (`[tool.pyright]`, `[tool.basedpyright]`, `pyrightconfig.json`), leave it outside qlty and record that in the policy. Do not enable `mypy` as a substitute: two typecheckers on one codebase is worse than one. |
 
 ## JavaScript and TypeScript
 

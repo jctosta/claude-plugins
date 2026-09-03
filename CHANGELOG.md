@@ -54,12 +54,37 @@ want a `.skill` artifact for claude.ai.
   `qlty githooks install` **overwrites `.git/hooks/pre-commit` and `pre-push` with no
   warning and no backup**, so `enforce` now checks and backs up first; the commit hook it
   installs only formats (`qlty fmt`) while the push hook is the one that blocks;
-  `qlty smells` and `qlty metrics` always exit 0 and cannot gate, so smells reach the gate
-  only through `[smells] mode = "block"` feeding `qlty check`; `qlty plugins list` requires
+  `qlty smells` and `qlty metrics` always exit 0 and cannot gate; `qlty plugins list` requires
   an already-initialised repo, so `propose` uses `qlty init --dry-run` instead; `qlty init`
   writes a whole `.qlty/` tree with cache symlinks rather than just a config file, still
   samples every plugin under `--no`, and picks per-language plugin variants
   (`radarlint-python`) plus a lint-only `ruff`.
+- Walked the six phases end to end against a real project (a ~7,500-line Python scraper
+  and translation pipeline) and corrected what the walkthrough disproved. The important
+  one: **a plugin's `mode` does not control whether it blocks.** `block`, `comment` and
+  `monitor` produce byte-identical CLI behaviour and the same exit code — they are Qlty
+  Cloud presentation semantics. What decides the gate is `--fail-level` (global, one bar
+  for the whole run) plus `--filter` (which plugins run at all), so "block on security,
+  report on the Sonar rules" is two commands rather than one config. Only
+  `mode = "disabled"` does anything locally. This invalidated the mode column in both
+  templates, the tier table in `propose`, and the tier advice in `choosing-checks`, all of
+  which now describe the real model in a new **What actually controls the gate** section.
+- Also corrected from that walkthrough: maintainability smells never reach `qlty check`
+  at any setting, so nothing in that tier can fail a build; `--upstream origin/main` exits
+  **99**, not 1, on a repo without that ref, so the templates derive the base ref instead
+  of hardcoding it; per-smell `mode` is silently dropped and `enabled = false` is the only
+  spelling that works — with `qlty config validate` still exiting 0 on the warning, so
+  `apply`'s gate now demands zero warning lines rather than a zero exit; `test_patterns`
+  does not stop linters running on tests, which is how one repo got 141 of its 178
+  findings from `bandit`'s `B101` firing on pytest assertions; and `--summary`/`--quiet`
+  cannot produce the per-plugin and per-check counts the phases ask for, so the
+  measurement commands use `--json`.
+- `qlty_advisor.py` gained the checks that would have caught the above: an unsupported key
+  inside a `[smells.*]` block is an error, with the `mode` case naming `enabled = false`
+  as the fix. `detect` now finds `pyright`/`basedpyright` (recording that qlty ships no
+  plugin for them, so `propose` says "leave alone" instead of proposing `mypy` alongside),
+  and reports a tool that runs with no config at all — a `.ruff_cache/` with no
+  `[tool.ruff]` is an existing linter, not an absent one.
 
 ### spec-workflow
 - The plugin now installs under [Oh My Pi](https://github.com/can1357/oh-my-pi) as well as

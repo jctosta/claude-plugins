@@ -48,7 +48,7 @@ Two caveats worth stating to the user:
 
 `ruff`, `eslint`, `golangci-lint`, `rubocop`, `clippy`, `mypy`, `phpstan`, `pmd`, `checkstyle`, `shellcheck`, `hadolint`, `yamllint`.
 
-These carry two populations in one tool: real defects (unused result, unreachable branch, shadowed variable, type error) and style preferences (quote style, line length, naming). Gate the first, not the second. In qlty terms: `block` at `medium`/`high`, let `low` come through as comments.
+These carry two populations in one tool: real defects (unused result, unreachable branch, shadowed variable, type error) and style preferences (quote style, line length, naming). Gate the first, not the second — with `--fail-level=medium` or `high`, which is the *only* control that decides it. See **What actually controls the gate** below before reaching for a plugin `mode`.
 
 If the repo already configures one of these, **adopt its config** — `config_files` in the plugin block. The team's tuned ruleset is more valuable than qlty's default, and two configs for one linter is worse than either alone.
 
@@ -58,7 +58,9 @@ A typechecker (`mypy`, `phpstan`) on a codebase that has never had one is a proj
 
 This is the SonarQube-shaped part, and the one where a naive rollout does the most damage. These checks measure proxies. A long function is *correlated* with a hard-to-maintain function; it is not the same thing. A perfectly clear 60-line state machine will trip the same threshold as a genuinely tangled one, and the tool cannot tell them apart.
 
-So: **start in `monitor`.** Look at what it flags. If most hits are things the team agrees are bad, promote to `block` on changed files. If most hits are false alarms, tune the threshold or turn the check off — do not leave it on and train everyone to ignore it.
+So: **start by looking, not gating.** Run `qlty smells --all --json` and read what it flags. If most hits are things the team agrees are bad, tighten the thresholds and keep watching. If most hits are false alarms, tune the threshold or set `enabled = false` — do not leave a check on and train everyone to ignore it.
+
+This tier cannot block a build at all in the CLI (see below), so "promote it to blocking" is not a step that exists. What promotion means here is that the numbers become a thing the team tracks and acts on.
 
 ## The smells, one by one
 
@@ -97,7 +99,9 @@ Use metrics to **find where to look**, never as a gate:
 - **`LCOM`** — a class doing several unrelated jobs scores high. A genuine conversation starter, and a terrible threshold. Never gate on it.
 - **`LOC`** — context for everything else. A 4,000-line file is worth a look; it is not a defect.
 
-Neither `qlty metrics` nor `qlty smells` can fail a build: both exit 0 regardless of what they find (verified against qlty 0.643.0). They are reporting commands. Smells reach the gate only through `[smells] mode = "block"`, which surfaces them in `qlty check` — that is the command whose exit code means something.
+Neither `qlty metrics` nor `qlty smells` can fail a build: both exit 0 regardless of what they find. They are reporting commands, and `qlty check` is the only one whose exit code means anything.
+
+Smells do not reach `qlty check` either. Setting `[smells] mode = "block"` and re-running `qlty check --all` produces no smell findings — the output still contains only plugin findings. **Maintainability smells cannot gate a build through the CLI at any setting.** Treat them as a report you read, not a rule you enforce. (Verified against qlty 0.643.0.)
 
 ## What not to gate on
 

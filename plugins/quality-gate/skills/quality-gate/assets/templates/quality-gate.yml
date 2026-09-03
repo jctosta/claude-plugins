@@ -44,10 +44,30 @@ jobs:
       - name: Install the linters
         run: qlty check --install-only
 
-      # The gate. Never `|| true` and never continue-on-error — the exit code is
-      # the whole point. qlty check exits 1 on anything at or above --fail-level.
+      # The gate. Never `|| true` and never continue-on-error - the exit code is
+      # the whole point. qlty check exits 1 on anything at or above --fail-level,
+      # and 99 when the command itself is wrong (usually an --upstream ref that
+      # does not resolve) - which is why fetch-depth: 0 above is not optional.
+      #
+      # --filter lists the plugins allowed to fail this build, and it is the ONLY
+      # thing that decides that: a plugin's mode does not, and --fail-level is
+      # global. Keep this list identical to the "may block" row in
+      # docs/quality/policy.md. Replace it with the plugins that policy names.
       - name: Check changed files
-        run: qlty check --upstream origin/${{ github.base_ref }} --fail-level=medium
+        run: >
+          qlty check
+          --upstream origin/${{ github.base_ref }}
+          --fail-level=medium
+          --filter=gitleaks,osv-scanner,ruff
+
+      # Everything not in the gate. Reports into the log, never fails the build.
+      # Drop this step if the policy puts every enabled plugin in the gate.
+      - name: Report (non-blocking)
+        run: >
+          qlty check
+          --upstream origin/${{ github.base_ref }}
+          --no-fail
+          --filter=radarlint-python
 
   full:
     name: full scan

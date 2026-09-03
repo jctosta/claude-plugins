@@ -523,6 +523,30 @@ with tempfile.TemporaryDirectory() as tmp:
     check("detect: finds the CI provider", found.ci == ["github-actions"], str(found.ci))
     check("detect: reports no qlty config when there is none", found.qlty["configured"] is False)
 
+    # A type-checker qlty ships no plugin for still has to be found, so `propose`
+    # can record it as "leave alone" instead of silently proposing a second one.
+    typed = qlty_advisor.detect(tree(base / "python-typed", {
+        "pyproject.toml": "[tool.basedpyright]\ninclude = ['lib']\n",
+        "lib/app.py": "def handle(request):\n    return request\n",
+    }))
+    check("detect: finds a type-checker qlty has no plugin for",
+          "basedpyright" in named(typed.tools, "tool"), sorted(named(typed.tools, "tool")))
+    check("detect: reports no qlty plugin for it rather than inventing one",
+          all(e["qlty_plugin"] is None for e in typed.tools if e["tool"] == "basedpyright"))
+
+    # A linter can be in daily use with no config at all; its cache proves it ran.
+    cached = tree(base / "python-cached", {
+        "pyproject.toml": "[project]\nname = 'x'\n",
+        "lib/app.py": "def handle(request):\n    return request\n",
+    })
+    (cached / ".ruff_cache").mkdir(parents=True, exist_ok=True)
+    cached_found = qlty_advisor.detect(cached)
+    ruff_entries = [e for e in cached_found.tools if e["tool"] == "ruff"]
+    check("detect: an unconfigured tool is still found via its cache",
+          bool(ruff_entries), sorted(named(cached_found.tools, "tool")))
+    check("detect: and is marked as having no config",
+          bool(ruff_entries) and ruff_entries[0].get("unconfigured") is True)
+
     found = qlty_advisor.detect(tree(base / "js-monorepo", {
         "package.json": json.dumps({
             "workspaces": ["apps/*", "packages/*"],
@@ -594,6 +618,25 @@ with tempfile.TemporaryDirectory() as tmp:
     caught_by_verify("an invalid plugin mode is an error", GOOD + '\n[[plugin]]\nname = "bandit"\nmode = "warn"\n')
     caught_by_verify("an invalid smell threshold is an error",
                      GOOD + '\n[smells.function_complexity]\nthreshold = -1\n')
+    # qlty drops an unsupported key with a warning and still exits 0 from
+    # `config validate`, so a check the author believes is off stays on.
+    SMELL_MODE = GOOD + '\n[smells.identical_code]\nmode = "disabled"\n'
+    caught_by_verify("a per-smell mode is an error, since qlty silently ignores it",
+                     SMELL_MODE)
+    # The message has to name the fix; "unknown key" alone leaves the author
+    # guessing, and the whole trap is that qlty's own validate stays quiet.
+    check("verify: the per-smell mode error names `enabled = false` as the fix",
+          any("enabled = false" in m for m in messages(verify_with("smell-mode-msg", SMELL_MODE), "error")),
+          str(messages(verify_with("smell-mode-msg", SMELL_MODE), "error")))
+    caught_by_verify("an unknown key inside a smell block is an error",
+                     GOOD + '\n[smells.function_complexity]\nthresold = 20\n')
+    caught_by_verify("a non-boolean smell enabled is an error",
+                     GOOD + '\n[smells.similar_code]\nenabled = "no"\n')
+    SMELL_OFF = GOOD + '\n[smells.identical_code]\nenabled = false\n'
+    check("verify: enabled = false is the accepted way to turn a smell off",
+          messages(verify_with("smell-off", SMELL_OFF), "error") == [],
+          str(messages(verify_with("smell-off", SMELL_OFF), "error")))
+
     caught_by_verify("an invalid triage level is an error",
                      GOOD + '\n[[triage]]\nmatch.plugins = ["ruff"]\nset.level = "critical"\n')
     caught_by_verify("a plugin for an absent language is a warning",
@@ -621,8 +664,17 @@ with tempfile.TemporaryDirectory() as tmp:
           str(messages(verify_with("template", template_toml), "error")))
 
 workflow = (QG_SKILL / "assets/templates/quality-gate.yml").read_text(encoding="utf-8")
+# The gate command may be a YAML folded scalar, so match on collapsed whitespace.
+workflow_flat = " ".join(workflow.split())
 check("template: the CI workflow has a trigger, jobs and the gate command",
-      "\non:" in workflow and "\njobs:" in workflow and "qlty check --upstream" in workflow)
+      "\non:" in workflow and "\njobs:" in workflow
+      and "qlty check --upstream" in workflow_flat)
+# --filter is the only thing deciding which plugins can fail the build; a gate
+# without one blocks on every enabled plugin regardless of what the policy said.
+check("template: the CI gate names the plugins allowed to fail the build",
+      "--filter=" in workflow_flat and "--fail-level=" in workflow_flat)
+check("template: the CI workflow reports the non-blocking plugins too",
+      "--no-fail" in workflow_flat)
 check("template: the CI workflow checks out full history for --upstream",
       "fetch-depth: 0" in workflow)
 workflow_steps = "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))

@@ -15,9 +15,12 @@ Three surfaces. Wire them in this order; each is useful alone.
 Start from `assets/templates/quality-gate.yml` and adapt. The essentials, whatever the provider:
 
 - Full history (`fetch-depth: 0`), or `--upstream` has no merge base to diff against.
+- A base ref that resolves. `qlty check` exits **99** — not 1 — when `--upstream` names a ref it cannot find, and a bare `origin/main` does exactly that on a repo whose default branch is `master` or that has no remote. On GitHub, `origin/${{ github.base_ref }}` is right for pull requests; elsewhere derive it and fail loudly if it is empty.
 - Install qlty (`curl https://qlty.sh | sh`, or the official action on GitHub).
 - Cache `~/.qlty` between runs, or every build re-downloads every tool.
 - Run the exact command from the policy. Not a variation of it — the same string, so CI and a developer's terminal agree.
+- **Carry the `--filter` list across verbatim.** It is the only thing deciding which plugins can fail the build; a plugin's `mode` does not, and `--fail-level` applies to the whole run. A filter list that drifts from the policy's "may block" row is a gate enforcing something nobody agreed to.
+- Give everything outside that list a second, `--no-fail` step so it still gets reported.
 - Let the exit code fail the job. No `|| true`.
 
 Two jobs are usually right: the diff gate on pull requests, and a nightly or push-to-main `--all --no-fail` run that records the full picture without blocking.
@@ -80,6 +83,8 @@ Where the client supports hooks natively (Claude Code hooks, for instance), a po
 ## Gate
 
 - [ ] CI job runs the policy's exact gate command and its exit code fails the build
+- [ ] The gate's `--filter` list matches the policy's "may block" row exactly, and everything outside it has a `--no-fail` reporting step
+- [ ] The gate was observed exiting 0 or 1, never 99 — a 99 means `--upstream` names a ref that does not resolve
 - [ ] CI checks out full history and caches the qlty toolchain
 - [ ] Any pre-existing `.git/hooks/pre-commit` or `pre-push` was backed up or deliberately discarded before `githooks install` overwrote it
 - [ ] Hooks installed without displacing an existing hook runner — or integrated into it

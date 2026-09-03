@@ -33,11 +33,25 @@ An approved **Policy** section in `docs/quality/policy.md`, and qlty on PATH. If
    config_files = ["pyproject.toml"]
    ```
 
-3. **Adopt existing configs rather than shadowing them.** For every plugin the policy marked "adopt", set `config_files` to the repo's own file. If the team wants the config files out of the repo root, `.qlty/configs/` is where qlty looks — move them there in the same change, and update whatever else references them.
+3. **`test_patterns` does not stop plugins running on tests.** It marks files as tests for smells and metrics; linters and security scanners still analyse them in full. This is the single most common source of a huge, meaningless first number — `bandit`'s `B101` fires on every `assert` in a pytest suite, which on a small repo can be 80% of all findings at `high` severity.
 
-4. **Monorepos.** One `[[plugin]]` block per sub-project that needs different treatment, each with its own `prefix`. Do not flatten a monorepo into one global config and then paper over it with `[[exclude]]` blocks.
+   If a plugin should not judge test code, say so explicitly with the narrowest instrument:
 
-5. **Validate the syntax before running anything:**
+   ```toml
+   # pytest's whole assertion style is `assert`; B101 fires on every test.
+   # Scoped to tests/ so a stray assert in product code is still reported.
+   [[triage]]
+   match.plugins = ["bandit"]
+   match.rules = ["B101"]
+   match.file_patterns = ["tests/**"]
+   set.ignored = true
+   ```
+
+4. **Adopt existing configs rather than shadowing them.** For every plugin the policy marked "adopt", set `config_files` to the repo's own file. If the team wants the config files out of the repo root, `.qlty/configs/` is where qlty looks — move them there in the same change, and update whatever else references them.
+
+5. **Monorepos.** One `[[plugin]]` block per sub-project that needs different treatment, each with its own `prefix`. Do not flatten a monorepo into one global config and then paper over it with `[[exclude]]` blocks.
+
+6. **Validate the syntax before running anything:**
 
    ```
    qlty config validate
@@ -46,11 +60,21 @@ An approved **Policy** section in `docs/quality/policy.md`, and qlty on PATH. If
 
    `qlty config validate` catches schema errors. `verify` catches the things that are valid but wrong here: a plugin enabled for a language that is not present, a tool configured twice, patterns matching nothing.
 
-6. **Prove the plugins actually run.** This is the step that catches a plugin whose runtime will not install or whose version pin does not exist:
+   **`qlty config validate` exits 0 on warnings.** An unsupported key is dropped with a `WARNING:` line and a zero exit — so a check you believe you turned off is quietly still running. Treat any warning as a failure of this step:
 
    ```
-   qlty check --all --no-fail --summary
+   qlty config validate 2>&1 | grep -q WARNING && echo "FAIL: unsupported keys are being ignored"
    ```
+
+   The trap this catches most often: `mode` inside a `[smells.<name>]` block. Per-smell `mode` does not exist — use `enabled = false`. Only `disabled` means anything as a *plugin* `mode`; `block`, `comment` and `monitor` do not change what the CLI gate does.
+
+7. **Prove the plugins actually run.** This is the step that catches a plugin whose runtime will not install or whose version pin does not exist:
+
+   ```
+   qlty check --all --no-fail --json
+   ```
+
+   `--json`, not `--summary`: the summary prints four lines and cannot show you which plugins produced findings, so it cannot prove each one ran. Count the tools in the JSON and compare against the config — a plugin with zero findings *and* no error may simply have had nothing to say, but a plugin missing from a run that errored did not execute.
 
    `--no-fail` makes this diagnostic rather than a gate; findings are expected and are `baseline`'s problem, not this phase's. **Warn the user first** — the first run downloads and installs every tool qlty drives and can take several minutes. Run it in the background so the session continues.
 
@@ -58,14 +82,14 @@ An approved **Policy** section in `docs/quality/policy.md`, and qlty on PATH. If
 
    `qlty check` exits 1 when it finds anything at or above `--fail-level` (default `fmt`) and 0 with `--no-fail`. Read the exit code directly — `$?` after a pipe is the pipe's status, not qlty's.
 
-7. Note the qlty version in the policy header table — thresholds and plugin defaults move between releases.
+8. Note the qlty version in the policy header table — thresholds and plugin defaults move between releases.
 
 ## Gate
 
 - [ ] `.qlty/qlty.toml` matches the approved policy — every enabled plugin, every threshold, every exclusion
 - [ ] Reasons carried across as comments, at least for anything non-obvious
 - [ ] Every "adopt" plugin has `config_files` pointing at the repo's own file
-- [ ] `qlty config validate` is clean
+- [ ] `qlty config validate` is clean — **zero `WARNING:` lines**, not merely exit 0
 - [ ] `qlty_advisor.py verify` reports no errors, and every warning is either fixed or explained
 - [ ] `qlty check --all --no-fail` completed and every enabled plugin ran without a runtime error
 - [ ] Nothing was written outside `.qlty/` (and any config files the policy said to move); `.qlty/.gitignore` already keeps the cache symlinks out of git, so commit the directory as-is

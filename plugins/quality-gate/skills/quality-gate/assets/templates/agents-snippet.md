@@ -18,7 +18,7 @@ qlty check --fix --level=low      # apply the fixes that are safe to apply
 Then confirm the gate is green on your changes:
 
 ```shell
-qlty check --upstream origin/main --fail-level=medium
+qlty check --upstream "$(git rev-parse --verify --quiet origin/main || git rev-parse --verify main)" --fail-level=medium
 ```
 
 A non-zero exit means CI will reject the change. Fix the findings rather than

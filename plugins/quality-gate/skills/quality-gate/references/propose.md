@@ -37,14 +37,16 @@ Read `choosing-checks.md` before deciding anything, and `plugin-catalog.md` whil
    - Prefer `[language.<name>.smells]` overrides to a global change when only one language is the problem.
    - Disabling a check outright is a legitimate decision. Record it as one, with the reason, instead of leaving it on and ignoring it.
 
-5. **Set the mode for each check.** `block`, `comment`, `monitor` or `disabled`. The default posture, unless the user has said otherwise:
+5. **Decide what may block, and know how that is actually expressed.** Read **What actually controls the gate** in `choosing-checks.md` first. The short version: a plugin's `mode` does *not* control blocking — `block`, `comment` and `monitor` are indistinguishable to the CLI. What decides it is `--fail-level` (global) plus `--filter` (which plugins run). So this step produces two lists, not a column of modes:
 
-   | Tier | Mode at adoption |
+   | Tier | Where it runs at adoption |
    |---|---|
-   | Formatters | enforced at the hook; not a standalone CI failure |
-   | Security | `block` on high severity |
-   | Correctness linters | `block` on the error subset, `comment` on style |
-   | Maintainability smells | `monitor` first; promote to `block` only after the numbers hold |
+   | Formatters | The pre-commit hook, which rewrites files. Never a standalone CI failure. |
+   | Security | **The gate** — in `--filter`, with `--fail-level=high`. |
+   | Correctness linters | **The gate**, at `--fail-level=medium` or `high` so style stays out of it. |
+   | Maintainability smells | Neither. They cannot fail a build at any setting; they are a report. |
+
+   Anything not in the gate's `--filter` list belongs to a second, non-failing reporting command. Write both commands out in the policy. The only `mode` worth putting in the config is `disabled`, which genuinely turns a plugin off.
 
 6. **State the adoption posture.** Clean-as-you-code is the default: gate changed files against the merge base, leave existing debt visible and non-blocking. Say so, and say what would have to be true to move to `--all`.
 
@@ -56,10 +58,10 @@ Read `choosing-checks.md` before deciding anything, and `plugin-catalog.md` whil
 
 Decisions in tables, reasons in prose. Minimum contents:
 
-- **Plugins** — a row per candidate: plugin, on/off/later, mode, config source (`qlty default` or the adopted file), reason.
+- **Plugins** — a row per candidate: plugin, on/off/later, **gate or report** (is it in the gate's `--filter`?), config source (`qlty default` or the adopted file), reason.
 - **Smells** — a row per check: threshold (default or chosen), mode, reason if it differs from default.
 - **Exclusions** — `exclude_patterns` and `test_patterns` with what each covers.
-- **Gate** — the exact command CI will run, the `--fail-level`, and what it is computed over (changed files vs all).
+- **Gate** — the exact command CI will run: `--fail-level`, the `--filter` list, how the base ref is derived, and what it is computed over (changed files vs all). Plus the separate reporting command for everything not in the filter.
 - **Deferred** — everything answered "later", with the condition that would change the answer. This is the list `status` re-reads in maintenance.
 
 ## Gate
@@ -69,8 +71,8 @@ Decisions in tables, reasons in prose. Minimum contents:
 - [ ] Every tool the profile found is reconciled: adopt, replace or leave alone, each with a reason
 - [ ] No linter ends up with two sources of configuration
 - [ ] Every threshold that differs from default has a reason drawn from the code
-- [ ] Every check has an explicit mode
-- [ ] The gate command is written out literally, including how the file set is computed
+- [ ] Every check is explicitly assigned to the gate or to the report, and the `--filter` list matches that assignment exactly
+- [ ] The gate command is written out literally, including how the file set is computed and how the base ref is derived (never a bare `origin/main`)
 - [ ] The adoption posture is stated, with the condition for tightening it
 - [ ] `status: proposed`, `updated` set
 

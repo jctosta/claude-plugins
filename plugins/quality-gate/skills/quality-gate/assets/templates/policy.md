@@ -46,15 +46,21 @@ sense, change it here first and then change the config.
 
 ### Plugins
 
-| Plugin | Tier | On? | Mode | Config source | Why |
+| Plugin | Tier | On? | Gate or report | Config source | Why |
 | --- | --- | --- | --- | --- | --- |
-|  |  |  |  |  |  |
+|  |  |  | gate / report |  |  |
+
+"Gate" means the plugin is named in the gate command's `--filter` and may fail a build.
+"Report" means it runs in a separate non-failing command. A plugin's `mode` does not decide
+this — see `choosing-checks.md`, **What actually controls the gate**.
 
 ### Smells
 
-| Check | Threshold | Mode | Why (if not default) |
+| Check | Threshold | On? | Why (if not default) |
 | --- | --- | --- | --- |
-|  |  |  |  |
+|  |  | on / `enabled = false` |  |
+
+Smells never block a build. This table is about what gets reported and at what threshold.
 
 ### Exclusions
 
@@ -66,7 +72,10 @@ sense, change it here first and then change the config.
 
 | Field | Value |
 | --- | --- |
-| command | `qlty check --upstream origin/main --fail-level=...` |
+| base ref | how `$BASE` is derived (never a bare `origin/main` — a repo without that ref exits 99) |
+| gate command | `qlty check --upstream "$BASE" --fail-level=... --filter=...` |
+| may block | the plugins in `--filter`, and only those |
+| report command | `qlty check --all --no-fail --filter=...` |
 | computed over | changed files / all files |
 | adoption posture | clean as you code / full enforcement |
 | tightens when |  |

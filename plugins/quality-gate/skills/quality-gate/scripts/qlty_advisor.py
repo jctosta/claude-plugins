@@ -89,6 +89,7 @@ TOOL_FILES: list[tuple[str, str, str | None, str]] = [
     ("ruff.toml", "ruff", "ruff", "linter"),
     (".ruff.toml", "ruff", "ruff", "linter"),
     (".flake8", "flake8", "flake8", "linter"),
+    ("pyrightconfig.json", "pyright", None, "type-checker"),
     ("mypy.ini", "mypy", "mypy", "type-checker"),
     (".mypy.ini", "mypy", "mypy", "type-checker"),
     (".bandit", "bandit", "bandit", "security"),
@@ -143,6 +144,9 @@ SECTION_TOOLS: dict[str, tuple[str, str | None, str]] = {
     "tool.ruff": ("ruff", "ruff", "linter"),
     "tool.black": ("black", "black", "formatter"),
     "tool.mypy": ("mypy", "mypy", "type-checker"),
+    # qlty ships no pyright plugin; detected so `propose` can record it as "leave alone"
+    "tool.pyright": ("pyright", None, "type-checker"),
+    "tool.basedpyright": ("basedpyright", None, "type-checker"),
     "tool.bandit": ("bandit", "bandit", "security"),
     "tool.isort": ("isort", None, "formatter"),
     "tool.pytest.ini_options": ("pytest", None, "test-framework"),
@@ -340,6 +344,18 @@ def detect_tools(root: Path, files: list[Path]) -> list[dict[str, object]]:
             if "prettier" in data:
                 record("prettier", "prettier", "formatter", path)
 
+    for cache, (tool, plugin, kind) in TOOL_CACHES.items():
+        if not (root / cache).exists():
+            continue
+        entry = found.get(tool)
+        if entry is None:
+            found[tool] = {
+                "tool": tool, "qlty_plugin": plugin, "kind": kind,
+                "configs": [], "unconfigured": True, "evidence": f"{cache}/",
+            }
+        else:
+            entry.setdefault("evidence", f"{cache}/")
+
     result = list(found.values())
     result.sort(key=lambda item: str(item["tool"]))
     return result
@@ -476,6 +492,8 @@ def render_detection(found: Detection) -> str:
         for entry in found.tools:
             plugin = entry["qlty_plugin"] or "-"
             configs = ", ".join(entry["configs"])  # type: ignore[arg-type]
+            if not configs:
+                configs = f"NO CONFIG - but {entry.get('evidence')} is present, so it runs here"
             lines.append(f"  {entry['tool']:<16} {entry['kind']:<14} qlty:{plugin:<18} {configs}")
     else:
         lines.append("  none found")
@@ -512,9 +530,23 @@ def render_detection(found: Detection) -> str:
 
 VALID_MODES = {"block", "comment", "monitor", "disabled"}
 VALID_LEVELS = {"unspecified", "fmt", "note", "low", "medium", "high"}
+# Keys qlty accepts inside a [smells.<name>] block. Anything else is dropped with a
+# warning that `qlty config validate` still exits 0 on - so a check you believe is off
+# stays on. `mode` is the trap: it is valid at [smells] but not per-smell.
+VALID_SMELL_KEYS = {"threshold", "enabled", "filter_patterns", "nodes_threshold"}
 SMELL_NAMES = {
     "boolean_logic", "nested_control_flow", "function_parameters", "return_statements",
     "file_complexity", "function_complexity", "identical_code", "similar_code", "duplication",
+}
+
+# Cache directories a tool leaves behind. Evidence it runs here even when the repo
+# configures nothing - an unconfigured linter is still an existing tool, and `propose`
+# must reconcile it rather than report "no linter found".
+TOOL_CACHES: dict[str, tuple[str, str | None, str]] = {
+    ".ruff_cache": ("ruff", "ruff", "linter"),
+    ".mypy_cache": ("mypy", "mypy", "type-checker"),
+    ".pytest_cache": ("pytest", None, "test-framework"),
+    ".eslintcache": ("eslint", "eslint", "linter"),
 }
 
 # qlty plugin -> languages it needs present to be worth enabling
@@ -671,10 +703,25 @@ def verify(root: Path) -> list[Finding]:
             if key not in SMELL_NAMES:
                 findings.append(Finding("warning", f"[smells.{key}] is not a smell qlty knows about"))
                 continue
-            if isinstance(value, dict) and "threshold" in value:
-                threshold = value["threshold"]
-                if not isinstance(threshold, int) or threshold <= 0:
-                    findings.append(Finding("error", f"[smells.{key}] threshold must be a positive integer, got {threshold!r}"))
+            if not isinstance(value, dict):
+                continue
+            for sub in value:
+                if sub in VALID_SMELL_KEYS:
+                    continue
+                if sub == "mode":
+                    findings.append(Finding("error",
+                        f"[smells.{key}] mode is ignored by qlty - per-smell mode does not exist. "
+                        f"To turn this check off write `enabled = false`; qlty only warns about this "
+                        f"and `qlty config validate` still exits 0, so the check stays on."))
+                else:
+                    findings.append(Finding("error",
+                        f"[smells.{key}] {sub} is not a key qlty accepts; it will be silently ignored"))
+            threshold = value.get("threshold")
+            if threshold is not None and (not isinstance(threshold, int) or threshold <= 0):
+                findings.append(Finding("error", f"[smells.{key}] threshold must be a positive integer, got {threshold!r}"))
+            enabled = value.get("enabled")
+            if enabled is not None and not isinstance(enabled, bool):
+                findings.append(Finding("error", f"[smells.{key}] enabled must be true or false, got {enabled!r}"))
 
     findings.extend(_verify_triage(config, text))
     return findings

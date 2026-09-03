@@ -57,6 +57,22 @@ name = "osv-scanner"
 # drivers = ["lint"]
 # config_files = ["pyproject.toml"]
 
+# A plugin's mode does NOT decide whether it blocks. `block`, `comment` and
+# `monitor` are Qlty Cloud presentation semantics and are indistinguishable to
+# the CLI gate. Only `mode = "disabled"` does anything here - it turns the
+# plugin off. What blocks is `--fail-level` plus the `--filter` list on the
+# gate command; see docs/quality/policy.md for both.
+
+# Example: a check worth running but never worth failing a build over. Leave it
+# out of the gate's --filter and give it its own reporting command.
+# [[plugin]]
+# name = "radarlint-python"
+
+# Example: turning a plugin off outright - the one mode the CLI acts on.
+# [[plugin]]
+# name = "ripgrep"
+# mode = "disabled"
+
 # Example: a scanner too slow for a commit hook, so it only runs in CI.
 # [[plugin]]
 # name = "trivy"
@@ -68,9 +84,14 @@ name = "osv-scanner"
 # prefix = "apps/web"
 
 # --- maintainability ------------------------------------------------------
-# Start in monitor on an existing codebase. Promote to block only once the
-# findings are ones the team agrees with. Each threshold below is qlty's
-# default; change one only with a reason drawn from the code.
+# These never fail a build. Smells do not reach `qlty check` at any mode - they
+# are reported by `qlty smells` only, which always exits 0. Treat them as a
+# report you read, not a rule you enforce.
+#
+# Each threshold below is qlty's default; change one only with a reason drawn
+# from the code. To turn a check off, write `enabled = false` - there is no
+# per-smell `mode`, and writing one is silently ignored while `qlty config
+# validate` still exits 0.
 
 [smells]
 mode = "monitor"
