@@ -1,6 +1,6 @@
 # jctosta-plugins
 
-Personal Claude Code plugin marketplace. One repo, several plugins; installs track this repository, so updating a plugin is `git push` here and `/plugin marketplace update` (or the background auto-update) everywhere else.
+Personal plugin marketplace for [Claude Code](https://claude.com/claude-code) and [Oh My Pi](https://github.com/can1357/oh-my-pi). One repo, several plugins; installs track this repository, so updating a plugin is `git push` here and `/plugin marketplace update` (or the background auto-update) everywhere else.
 
 Currently shipping:
 
@@ -11,7 +11,7 @@ Currently shipping:
 ## Install (Claude Code)
 
 ```shell
-/plugin marketplace add jctosta/claude-plugins
+/plugin marketplace add jctosta/plugins
 /plugin install spec-workflow@jctosta-plugins
 ```
 
@@ -33,6 +33,21 @@ Then either invoke the phase commands directly:
 
 …or just talk ("spec this out", "where are we", "apply the review comments") — the skill routes by intent too.
 
+## Install (Oh My Pi)
+
+```shell
+omp plugin marketplace add jctosta/plugins
+omp plugin install spec-workflow@jctosta-plugins
+```
+
+Same commands (`/spec-workflow:explore …`), same skill. If you already installed the plugin through
+Claude Code, omp reads `~/.claude/plugins/installed_plugins.json` too and picks it up with no second install.
+
+Each plugin ships a root `plugin.json` declaring [Agent Plugins 1.0.0](https://agent-plugins.org), so omp
+loads the skill through its portable-standard provider rather than the Claude-compatibility fallback. The
+commands still come from the Claude side — that surface isn't part of the standard, and omp supports the
+mix deliberately.
+
 ## Enable per project
 
 Commit this to a project's `.claude/settings.json` so the marketplace registers (after folder trust) and the plugin is on by default for that repo:
@@ -41,7 +56,7 @@ Commit this to a project's `.claude/settings.json` so the marketplace registers 
 {
   "extraKnownMarketplaces": {
     "jctosta-plugins": {
-      "source": { "source": "github", "repo": "jctosta/claude-plugins" }
+      "source": { "source": "github", "repo": "jctosta/plugins" }
     }
   },
   "enabledPlugins": {
@@ -58,10 +73,11 @@ Commit this to a project's `.claude/settings.json` so the marketplace registers 
 ## Repository layout
 
 ```
-.claude-plugin/marketplace.json      # the catalog Claude Code reads
+.claude-plugin/marketplace.json      # the catalog; omp reads it as its documented fallback
 plugins/
   spec-workflow/
-    .claude-plugin/plugin.json       # plugin manifest (no version field — see Updating)
+    plugin.json                      # Agent Plugins manifest — omp and any standard client
+    .claude-plugin/plugin.json       # Claude Code manifest (no version field — see Updating)
     commands/                        # thin /spec-workflow:<phase> wrappers
     skills/spec-workflow/            # the actual skill
       SKILL.md                       # router + shared conventions
@@ -86,13 +102,17 @@ tests/run_checks.py                  # CI entry point
 6. Every artifact's header is a two-column table that parses (escaped pipes included), and the legacy `key: value` block still parses.
 7. Code markers stay scoped per feature: two features sharing `S-01.1` don't satisfy each other, and `.spec-lint.json` can map test files to a slug.
 8. A brief marked `shipped` only reads as terminal once the lint, the open feedback, the mandatory artifacts and `tests.md` back it up.
+9. Every `plugin.json` and `SKILL.md` conforms to the closed Agent Plugins 1.0.0 schemas, and the two manifests agree. Both schemas reject silently at runtime — an unexpected `SKILL.md` frontmatter key or a description past 1024 characters just drops the skill — so eight deliberately broken copies check that the validator actually bites.
 
 A second job runs `claude plugin validate .` for manifest/frontmatter schema errors.
 
 ## Adding a new plugin
 
 1. `mkdir -p plugins/<name>/.claude-plugin plugins/<name>/skills/<name>`
-2. Drop the skill folder under `skills/<name>/`, write `plugin.json` (name, description, author — omit `version`).
+2. Drop the skill folder under `skills/<name>/`, then write both manifests (name, description, author — omit `version`):
+   `.claude-plugin/plugin.json` for Claude Code, and a root `plugin.json` carrying the Agent Plugins `$schema`
+   for omp. Copy the existing pair; `tests/run_checks.py` fails if the two drift apart or either one violates
+   its schema. Shipping only the Claude manifest works — the plugin just loads through omp's fallback instead.
 3. Add commands under `commands/` if the skill benefits from explicit entry points.
 4. Append an entry to `.claude-plugin/marketplace.json` (`"source": "./plugins/<name>"`).
 5. If it has checkable invariants, extend `tests/run_checks.py`.

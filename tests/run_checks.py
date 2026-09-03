@@ -20,6 +20,8 @@ Checks:
    satisfy each other's traceability, and .spec-lint.json can map files to a slug.
 8. A brief marked `shipped` is only accepted as terminal once the lint, the open
    feedback, the mandatory artifacts and tests.md all back it up.
+9. Every plugin.json and SKILL.md conforms to the closed Agent Plugins 1.0.0
+   schemas, so an Agent Plugins client (Oh My Pi) can't silently drop the skill.
 Exits non-zero on the first failure.
 """
 from __future__ import annotations
@@ -30,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -285,6 +288,195 @@ with tempfile.TemporaryDirectory() as td:
     st = spec_status.feature_status(shipped("really-shipped", green), forbidden)
     check("shipped: accepted when everything backs it up",
           st.phase == "shipped" and st.next == "nothing — feature is shipped", f"{st.phase} / {st.next}")
+
+print("9. manifests and skills conform to Agent Plugins 1.0.0")
+AGENT_PLUGIN_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+MANIFEST_FIELDS = {"$schema", "name", "version", "description", "author",
+                   "homepage", "repository", "license", "keywords", "extensions"}
+AUTHOR_FIELDS = {"name", "email", "url"}
+SKILL_FIELDS = {"name", "description", "license", "allowed-tools", "metadata", "compatibility"}
+PLUGIN_NAME_RE = re.compile(r"^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$")
+
+
+def parse_frontmatter(text: str) -> tuple[dict[str, object], str | None]:
+    """Read SKILL.md frontmatter without a YAML dependency.
+
+    The closed skill schema only permits top-level scalars, a list, and one
+    nested `key: value` map, so a scanner covers it. Returns (fields, error).
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}, "missing frontmatter"
+    end = next((i for i, ln in enumerate(lines[1:], 1) if ln.strip() == "---"), None)
+    if end is None:
+        return {}, "unterminated frontmatter"
+    fields: dict[str, object] = {}
+    nested: dict[str, str] | None = None
+    key: str | None = None
+    for ln in lines[1:end]:
+        if not ln.strip():
+            continue
+        if ln.lstrip().startswith("-") and key is not None:
+            prior = fields.get(key)
+            item = ln.lstrip()[1:].strip().strip("\"'")
+            fields[key] = (prior if isinstance(prior, list) else []) + [item]
+            nested = None
+            continue
+        top = re.match(r"^(\S[^:]*):\s?(.*)$", ln)
+        if top and not ln[0].isspace():
+            key, value = top.group(1), top.group(2).strip()
+            if value:
+                fields[key], nested = value.strip("\"'"), None
+            else:
+                nested = {}
+                fields[key] = nested
+            continue
+        sub = re.match(r"^\s+(\S[^:]*):\s?(.*)$", ln)
+        if sub and nested is not None:
+            nested[sub.group(1)] = sub.group(2).strip().strip("\"'")
+            continue
+        return {}, f"cannot parse frontmatter line {ln!r}"
+    return fields, None
+
+
+def validate_agent_plugin_manifest(path: Path, dir_name: str) -> list[str]:
+    """Violations of the closed Agent Plugins 1.0.0 manifest schema (spec 5).
+
+    A fatally invalid manifest means no component of the plugin loads at all,
+    so these are the checks standing between a typo and a dead install.
+    """
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("$schema") != AGENT_PLUGIN_SCHEMA:
+        return [f"$schema must be exactly {AGENT_PLUGIN_SCHEMA}, got {data.get('$schema')!r}"]
+    bad = [f'unknown top-level field "{k}"' for k in data if k not in MANIFEST_FIELDS]
+    name = data.get("name")
+    if not isinstance(name, str) or not 1 <= len(name) <= 64 or not PLUGIN_NAME_RE.match(name) \
+            or "--" in name or ".." in name:
+        bad.append(f"invalid plugin name {name!r}")
+    elif name != dir_name:
+        bad.append(f"name {name!r} does not match directory {dir_name!r}")
+    for field in ("version", "description", "homepage", "repository", "license"):
+        if field in data and not isinstance(data[field], str):
+            bad.append(f'"{field}" must be a string')
+    keywords = data.get("keywords")
+    if keywords is not None and (not isinstance(keywords, list)
+                                 or any(not isinstance(k, str) for k in keywords)):
+        bad.append('"keywords" must be an array of strings')
+    author = data.get("author")
+    if author is not None and not isinstance(author, dict):
+        bad.append('"author" must be an object')
+    elif isinstance(author, dict):
+        for k, v in author.items():
+            if k not in AUTHOR_FIELDS:
+                bad.append(f'unknown "author" field "{k}"')
+            elif not isinstance(v, str):
+                bad.append(f'"author.{k}" must be a string')
+    return bad
+
+
+def validate_agent_skill(skill_dir: Path) -> list[str]:
+    """Violations of the closed Agent Skills frontmatter schema (Agent Plugins 7.1).
+
+    A skill that trips any of these is skipped silently — the plugin still
+    installs and the commands still work, so nothing else would notice.
+    """
+    fields, err = parse_frontmatter((skill_dir / "SKILL.md").read_text(encoding="utf-8"))
+    if err:
+        return [err]
+    bad = [f'unexpected frontmatter field "{k}"' for k in fields if k not in SKILL_FIELDS]
+    name = fields.get("name")
+    if not isinstance(name, str) or not name.strip():
+        bad.append('missing required "name"')
+    else:
+        n = unicodedata.normalize("NFKC", name.strip())
+        if len(n) > 64:
+            bad.append('"name" exceeds 64 characters')
+        if n != n.lower():
+            bad.append('"name" must be lowercase')
+        if n.startswith("-") or n.endswith("-"):
+            bad.append('"name" cannot start or end with a hyphen')
+        if "--" in n:
+            bad.append('"name" cannot contain consecutive hyphens')
+        if not all(c.isalnum() or c == "-" for c in n):
+            bad.append(f'invalid "name" {n!r}')
+        if n != unicodedata.normalize("NFKC", skill_dir.name):
+            bad.append(f'"name" {n!r} does not match directory {skill_dir.name!r}')
+    desc = fields.get("description")
+    if not isinstance(desc, str) or not desc.strip():
+        bad.append('missing required "description"')
+    elif len(desc) > 1024:
+        bad.append(f'"description" is {len(desc)} characters, over the 1024 limit')
+    for field in ("license", "allowed-tools", "compatibility"):
+        if field in fields and not isinstance(fields[field], str):
+            bad.append(f'"{field}" must be a string')
+    comp = fields.get("compatibility")
+    if isinstance(comp, str) and len(comp) > 500:
+        bad.append('"compatibility" exceeds 500 characters')
+    meta = fields.get("metadata")
+    if meta is not None and not isinstance(meta, dict):
+        bad.append('"metadata" must be a map of string keys to string values')
+    elif isinstance(meta, dict):
+        bad += [f'"metadata.{k}" must be a string' for k, v in meta.items() if not isinstance(v, str)]
+    return bad
+
+
+for manifest_path in sorted(REPO.glob("plugins/*/plugin.json")):
+    plugin_dir = manifest_path.parent
+    violations = validate_agent_plugin_manifest(manifest_path, plugin_dir.name)
+    check(f"{plugin_dir.name}: plugin.json conforms", not violations, "; ".join(violations))
+    legacy_path = plugin_dir / ".claude-plugin/plugin.json"
+    if legacy_path.exists():
+        portable = json.loads(manifest_path.read_text(encoding="utf-8"))
+        legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
+        drift = [k for k in ("name", "description", "author", "license")
+                 if portable.get(k) != legacy.get(k)]
+        check(f"{plugin_dir.name}: both manifests agree", not drift, f"differ on {', '.join(drift)}")
+
+for skill_md in sorted(REPO.glob("plugins/*/skills/*/SKILL.md")):
+    skill_dir = skill_md.parent
+    violations = validate_agent_skill(skill_dir)
+    fields, _ = parse_frontmatter(skill_md.read_text(encoding="utf-8"))
+    desc = fields.get("description")
+    room = f"description {len(desc)}/1024" if isinstance(desc, str) else "no description"
+    check(f"{skill_dir.name}: SKILL.md conforms ({room})", not violations, "; ".join(violations))
+
+with tempfile.TemporaryDirectory() as td:
+    root = Path(td)
+    good_manifest = json.loads((REPO / "plugins/spec-workflow/plugin.json").read_text(encoding="utf-8"))
+    good_skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+    fixture_skill = root / "spec-workflow"
+    fixture_skill.mkdir()
+
+    def caught(label: str, violations: list[str]) -> None:
+        check(label, bool(violations), "no violation reported")
+
+    def manifest_violations(mutate) -> list[str]:
+        data = dict(good_manifest)
+        mutate(data)
+        path = root / "plugin.json"
+        path.write_text(json.dumps(data), encoding="utf-8")
+        return validate_agent_plugin_manifest(path, "spec-workflow")
+
+    def skill_violations(text: str) -> list[str]:
+        (fixture_skill / "SKILL.md").write_text(text, encoding="utf-8")
+        return validate_agent_skill(fixture_skill)
+
+    caught("manifest: another schema version is rejected",
+           manifest_violations(lambda d: d.update({"$schema": AGENT_PLUGIN_SCHEMA.replace("1.0.0", "2.0.0")})))
+    caught("manifest: an unknown top-level field is rejected",
+           manifest_violations(lambda d: d.update({"skills": "./skills"})))
+    caught("manifest: a name unlike the directory is rejected",
+           manifest_violations(lambda d: d.update({"name": "spec-flow"})))
+    caught("manifest: an unknown author field is rejected",
+           manifest_violations(lambda d: d.update({"author": {"github": "jctosta"}})))
+    caught("skill: an unexpected frontmatter field is rejected",
+           skill_violations(good_skill.replace("metadata:\n", "version: 1.0.0\nmetadata:\n", 1)))
+    caught("skill: a description over 1024 characters is rejected",
+           skill_violations(good_skill.replace("description: ", "description: " + "x" * 1024, 1)))
+    caught("skill: a name unlike the directory is rejected",
+           skill_violations(good_skill.replace("name: spec-workflow", "name: spec-flow", 1)))
+    caught("skill: an uppercase name is rejected",
+           skill_violations(good_skill.replace("name: spec-workflow", "name: Spec-Workflow", 1)))
 
 print()
 if failures:
