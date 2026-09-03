@@ -7,6 +7,21 @@ want a `.skill` artifact for claude.ai.
 ## Unreleased
 
 ### spec-workflow
+- The plugin now installs under [Oh My Pi](https://github.com/can1357/oh-my-pi) as well as
+  Claude Code. It already loaded there through omp's Claude-compatibility fallback; what's
+  new is a root `plugin.json` declaring [Agent Plugins 1.0.0](https://agent-plugins.org), so
+  the skill goes through the portable-standard loader instead — and works in any client that
+  implements the standard, not just omp. The Claude manifest at `.claude-plugin/plugin.json`
+  is untouched and still the one Claude Code reads; commands keep loading from the Claude
+  side, since that surface isn't part of the standard.
+  Opting in has a sharp edge worth knowing about: under the standard a `SKILL.md` whose
+  frontmatter carries any key outside the closed six-field set, or a description past 1024
+  characters, is skipped in silence — the plugin still installs and the commands still work,
+  so nothing visibly breaks. `tests/run_checks.py` now validates both manifests and every
+  `SKILL.md` against the closed schemas, reports how much description headroom is left
+  (currently 975 of 1024), and keeps eight broken fixtures around to prove the check bites.
+- The phase commands pointed at `skills/spec-workflow/SKILL.md in this plugin`, a path that
+  only resolves under one client. They name the skill instead.
 - Mermaid diagrams are validated by the lint with [maid](https://github.com/probelabs/maid)
   when it is installed (`npm i -g @probelabs/maid`; `--mermaid npx` fetches it on
   demand, `--mermaid off` skips). A diagram that doesn't parse is an error with
