@@ -48,6 +48,18 @@ want a `.skill` artifact for claude.ai.
 - `tests/run_checks.py` gained a section 10 covering all of the above against fixture
   repositories, plus the four shipped templates. Twelve deliberate breakages confirm the
   checks bite.
+- Verified end to end against **qlty 0.643.0**: every command line the skill emits was
+  executed against a real repository, and the phases were corrected where the CLI
+  disagreed with the documentation. The findings worth knowing:
+  `qlty githooks install` **overwrites `.git/hooks/pre-commit` and `pre-push` with no
+  warning and no backup**, so `enforce` now checks and backs up first; the commit hook it
+  installs only formats (`qlty fmt`) while the push hook is the one that blocks;
+  `qlty smells` and `qlty metrics` always exit 0 and cannot gate, so smells reach the gate
+  only through `[smells] mode = "block"` feeding `qlty check`; `qlty plugins list` requires
+  an already-initialised repo, so `propose` uses `qlty init --dry-run` instead; `qlty init`
+  writes a whole `.qlty/` tree with cache symlinks rather than just a config file, still
+  samples every plugin under `--no`, and picks per-language plugin variants
+  (`radarlint-python`) plus a lint-only `ruff`.
 
 ### spec-workflow
 - The plugin now installs under [Oh My Pi](https://github.com/can1357/oh-my-pi) as well as

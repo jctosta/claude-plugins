@@ -11,6 +11,9 @@ config_version = "0"
 
 # Files no check should ever look at. qlty already honours .gitignore, so this
 # is for tracked files that are generated, vendored or otherwise not ours.
+# Deliberately short: `qlty init` generates a much longer boilerplate list that
+# also excludes **/config/**, **/db/**, **/templates/** and **/assets/**, which
+# is often more than a project meant to skip. Add what this repo actually needs.
 exclude_patterns = [
   "**/node_modules/**",
   "**/vendor/**",
@@ -46,9 +49,12 @@ name = "gitleaks"
 [[plugin]]
 name = "osv-scanner"
 
-# Example: adopting an existing config rather than shadowing it.
+# Example: adopting an existing config rather than shadowing it. `drivers`
+# picks which halves of a dual-purpose tool run — qlty init enables ruff as
+# lint-only, so add "format" deliberately and drop black if you do.
 # [[plugin]]
 # name = "ruff"
+# drivers = ["lint"]
 # config_files = ["pyproject.toml"]
 
 # Example: a scanner too slow for a commit hook, so it only runs in CI.

@@ -40,7 +40,12 @@ jobs:
           curl https://qlty.sh | sh
           echo "$HOME/.qlty/bin" >> "$GITHUB_PATH"
 
-      # The gate. No `|| true` — the exit code is the whole point.
+      # Populate the cache even when the gate fails, so the next run is fast.
+      - name: Install the linters
+        run: qlty check --install-only
+
+      # The gate. Never `|| true` and never continue-on-error — the exit code is
+      # the whole point. qlty check exits 1 on anything at or above --fail-level.
       - name: Check changed files
         run: qlty check --upstream origin/${{ github.base_ref }} --fail-level=medium
 
@@ -67,6 +72,7 @@ jobs:
 
       # Reports the whole picture without blocking. This is the number the
       # Baseline section in docs/quality/policy.md is compared against.
+      # smells and metrics always exit 0; only check has a meaningful status.
       - name: Scan everything
         run: |
           qlty check --all --no-fail --summary

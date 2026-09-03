@@ -20,6 +20,8 @@ Read `choosing-checks.md` if you have not already — the sections on what not t
 
    Record: total findings by level and by plugin, smell counts by check, and the complexity hotspots. Absolute numbers now; they are the comparison point every future `status` uses.
 
+   `qlty smells` and `qlty metrics` always exit 0 — they report, they do not gate. Only `qlty check` has a meaningful exit code (1 when anything at or above `--fail-level` is found, 0 with `--no-fail`). Smells reach the gate only through `[smells] mode = "block"`.
+
 2. **Read the distribution, not the total.** "1,340 issues" says nothing. What matters:
 
    - How much is one plugin? A single noisy rule producing 60% of the findings is a rule to tune, not debt to triage.
@@ -62,6 +64,8 @@ Read `choosing-checks.md` if you have not already — the sections on what not t
    qlty check --upstream origin/main --fail-level=<level>
    echo "exit=$?"
    ```
+
+   Check the exit code directly, not through a pipe — `$?` after `qlty check | tail` is `tail`'s status, not qlty's.
 
    If it does not, the posture or the triage is not finished. Do not proceed to `enforce` on a red gate.
 

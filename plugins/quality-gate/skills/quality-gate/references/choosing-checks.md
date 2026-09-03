@@ -87,13 +87,17 @@ And be honest about the tradeoff: deduplicating three similar handlers behind an
 
 ## Metrics
 
-`qlty metrics` computes, per file and directory: `complexity`, `loc`, `lcom` (lack of cohesion), and counts of classes, functions and fields.
+`qlty metrics` prints, per file and directory: `classes`, `funcs`, `fields`, `cyclo`, `complex`, `LCOM`, `lines`, `LOC`.
 
-Use them to **find where to look**, never as a gate:
+Two of those are complexity and they are not the same thing. **`cyclo`** is cyclomatic complexity — branch count, roughly "how many paths through this". **`complex`** is cognitive complexity, which penalises nesting and rewards flat early-return code. The `function_complexity` smell threshold is the cognitive one. When a function scores high on `cyclo` but low on `complex`, it is usually a wide flat dispatch — fine to read, and not what the smell is for.
 
-- **`complexity`, sorted descending** — the single most useful output of the whole tool. It tells you which ten files to be careful in. Run it during `assess` and put the list in the policy.
-- **`lcom`** — a class doing several unrelated jobs scores high. A genuine conversation starter, and a terrible threshold. Never gate on it.
-- **`loc`** — context for everything else. A 4,000-line file is worth a look; it is not a defect.
+Use metrics to **find where to look**, never as a gate:
+
+- **`qlty metrics --sort complexity`** (which sorts on the cognitive `complex` column) — the single most useful output of the whole tool. It tells you which ten files to be careful in. Run it during `assess` and put the list in the policy.
+- **`LCOM`** — a class doing several unrelated jobs scores high. A genuine conversation starter, and a terrible threshold. Never gate on it.
+- **`LOC`** — context for everything else. A 4,000-line file is worth a look; it is not a defect.
+
+Neither `qlty metrics` nor `qlty smells` can fail a build: both exit 0 regardless of what they find (verified against qlty 0.643.0). They are reporting commands. Smells reach the gate only through `[smells] mode = "block"`, which surfaces them in `qlty check` — that is the command whose exit code means something.
 
 ## What not to gate on
 

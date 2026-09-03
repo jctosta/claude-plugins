@@ -644,11 +644,21 @@ def verify(root: Path) -> list[Finding]:
         if not isinstance(patterns, list):
             findings.append(Finding("error", f"{key} must be a list of globs"))
             continue
+        idle = []
         for pattern in patterns:
             if not isinstance(pattern, str):
                 findings.append(Finding("error", f"{key} contains a non-string entry {pattern!r}"))
             elif not glob_matches_anything(pattern, all_names):
-                findings.append(Finding("info", f"{key} entry {pattern!r} matches nothing in the repo today"))
+                idle.append(pattern)
+        # qlty init ships a long boilerplate exclude list, most of which matches
+        # nothing in any given repo. One line, not thirty.
+        if idle:
+            shown = ", ".join(repr(p) for p in idle[:5])
+            more = f" (+{len(idle) - 5} more)" if len(idle) > 5 else ""
+            findings.append(Finding(
+                "info",
+                f"{len(idle)} of {len(patterns)} {key} match nothing in the repo today: {shown}{more}",
+            ))
 
     smells = config.get("smells")
     if isinstance(smells, dict):

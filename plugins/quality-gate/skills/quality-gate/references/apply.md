@@ -8,13 +8,19 @@ An approved **Policy** section in `docs/quality/policy.md`, and qlty on PATH. If
 
 ## Method
 
-1. **Never run a bare `qlty init`.** It is interactive, writes `.qlty/qlty.toml` immediately, and offers to sample every plugin it enables. Use it only for reconnaissance:
+1. **Never run a bare `qlty init`.** It writes far more than a config file: a whole `.qlty/` directory with `qlty.toml`, its own `.gitignore`, `configs/`, `hooks/`, and symlinks into `~/.qlty/cache/`. It also samples every plugin it enables, which downloads and runs each tool — `--no` does not skip that, and `--yes` and `--no` cannot be combined.
+
+   Use it only for reconnaissance:
 
    ```
    qlty init --dry-run
    ```
 
-   That prints the config it *would* generate without saving. Read it for two things: the exact plugin names it picked, and any plugin it found that the policy never considered. A surprise there means `assess` missed something — say so rather than silently adopting it.
+   That prints the config it *would* generate and writes nothing. Read it for three things:
+
+   - **The exact plugin names it picked.** They are not always what the catalog suggests — a Python repo gets `radarlint-python`, not `radarlint`, and `ruff` arrives as `drivers = ["lint"]` so the formatter half stays off.
+   - **Any plugin it found that the policy never considered.** A surprise there means `assess` missed something. Say so rather than silently adopting it.
+   - **Its `exclude_patterns`.** The generated list is long boilerplate and excludes directories that may matter here — `**/config/**`, `**/db/**`, `**/templates/**`, `**/assets/**`. Do not copy it unread.
 
 2. **Write the config yourself**, starting from `assets/templates/qlty.toml`. Structure, in order: `config_version`, `exclude_patterns`, `test_patterns`, `[[source]]`, `[[plugin]]` blocks, `[smells.*]` blocks, `[language.*.smells]` overrides, `[[exclude]]`, `[[triage]]`.
 
@@ -50,6 +56,8 @@ An approved **Policy** section in `docs/quality/policy.md`, and qlty on PATH. If
 
    A plugin that errors is not configured. Fix the version, drop the plugin, or record it as blocked; do not leave a plugin in the config that cannot execute.
 
+   `qlty check` exits 1 when it finds anything at or above `--fail-level` (default `fmt`) and 0 with `--no-fail`. Read the exit code directly — `$?` after a pipe is the pipe's status, not qlty's.
+
 7. Note the qlty version in the policy header table — thresholds and plugin defaults move between releases.
 
 ## Gate
@@ -60,7 +68,7 @@ An approved **Policy** section in `docs/quality/policy.md`, and qlty on PATH. If
 - [ ] `qlty config validate` is clean
 - [ ] `qlty_advisor.py verify` reports no errors, and every warning is either fixed or explained
 - [ ] `qlty check --all --no-fail` completed and every enabled plugin ran without a runtime error
-- [ ] Nothing was written outside `.qlty/` (and any config files the policy said to move)
+- [ ] Nothing was written outside `.qlty/` (and any config files the policy said to move); `.qlty/.gitignore` already keeps the cache symlinks out of git, so commit the directory as-is
 - [ ] `status: applied`, `qlty` version recorded
 
 Then stop. Summarize: what was written, which plugins ran, how many findings came back (the number only — interpreting it is `baseline`'s job), and anything the policy asked for that could not be configured.

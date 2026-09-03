@@ -2,13 +2,15 @@
 
 The lookup table for `propose`. Grouped by what a repo contains, with a starting recommendation for each. Tiers are defined in `choosing-checks.md`.
 
-> **This list drifts.** It was compiled from qlty's published plugin list; qlty adds plugins and changes defaults between releases. Confirm against the installed CLI before relying on a name:
+> **This list drifts.** Compiled against **qlty 0.643.0 (2026-09-03)**; qlty adds plugins and changes defaults between releases. Confirm against the installed CLI before relying on a name:
 >
 > ```
 > qlty plugins list
 > ```
 >
-> If a name here is not in that output, the CLI is authoritative. If the CLI has plugins this file does not, consider them — absence here is not a recommendation against.
+> Two things about that command: it requires an already-initialised repository (it errors with "Qlty must be set up in this repository" otherwise), so during `propose` — which runs before `apply` — use `qlty init --dry-run` instead to see what qlty itself would pick. And some plugins are **per-language variants** rather than the single name listed here: `radarlint` ships as `radarlint-python`, `radarlint-java` and so on.
+>
+> If a name here is not in the CLI's output, the CLI is authoritative. If the CLI has plugins this file does not, consider them — absence here is not a recommendation against.
 
 Recommendations mean:
 
@@ -51,7 +53,7 @@ Recommendations mean:
 
 | Plugin | Tier | Catches | Start |
 |---|---|---|---|
-| `ruff` | linter + formatter | Fast, replaces flake8, isort, pyupgrade and more | **on** — adopt `pyproject.toml`/`ruff.toml` if present |
+| `ruff` | linter + formatter | Fast, replaces flake8, isort, pyupgrade and more | **on** — adopt `pyproject.toml`/`ruff.toml` if present. `qlty init` enables it as `drivers = ["lint"]`; add the format driver deliberately, and not alongside `black`. |
 | `black` | formatter | Formatting | on, unless `ruff format` is already used — not both |
 | `flake8` | linter | Classic linting | off if `ruff` is on; they overlap heavily |
 | `mypy` | type-checker | Type errors | consider — on a codebase with no annotations this is a project, not a check. Start `monitor`. |
@@ -100,7 +102,7 @@ Recommendations mean:
 | `checkstyle` | linter | Style and some correctness | consider — adopt the existing `checkstyle.xml` |
 | `pmd` | linter | Bug patterns and complexity | consider — overlaps qlty's smells |
 | `ktlint` | formatter + linter | Kotlin | **on**, for Kotlin |
-| `radarlint` | linter | Sonar-derived rules for JVM languages | consider — closest thing to what SonarQube reported |
+| `radarlint-*` | linter | Sonar-derived rules, one plugin per language (`radarlint-python`, `radarlint-java`, …) | consider — closest thing to what SonarQube reported, and what `qlty init` picks by default |
 
 ## PHP
 
