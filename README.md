@@ -11,7 +11,7 @@ Currently shipping:
 ## Install (Claude Code)
 
 ```shell
-/plugin marketplace add jctosta/claude-plugins
+/plugin marketplace add jctosta/plugins
 /plugin install spec-workflow@jctosta-plugins
 ```
 
@@ -36,7 +36,7 @@ Then either invoke the phase commands directly:
 ## Install (Oh My Pi)
 
 ```shell
-omp plugin marketplace add jctosta/claude-plugins
+omp plugin marketplace add jctosta/plugins
 omp plugin install spec-workflow@jctosta-plugins
 ```
 
@@ -56,7 +56,7 @@ Commit this to a project's `.claude/settings.json` so the marketplace registers 
 {
   "extraKnownMarketplaces": {
     "jctosta-plugins": {
-      "source": { "source": "github", "repo": "jctosta/claude-plugins" }
+      "source": { "source": "github", "repo": "jctosta/plugins" }
     }
   },
   "enabledPlugins": {

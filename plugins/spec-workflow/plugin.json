@@ -7,7 +7,7 @@
     "url": "https://github.com/jctosta"
   },
   "license": "MIT",
-  "homepage": "https://github.com/jctosta/claude-plugins",
-  "repository": "https://github.com/jctosta/claude-plugins",
+  "homepage": "https://github.com/jctosta/plugins",
+  "repository": "https://github.com/jctosta/plugins",
   "keywords": ["spec", "requirements", "testing", "workflow"]
 }
